@@ -1,4 +1,4 @@
-import { ReactNode, useState, useEffect } from 'react';
+import { ReactNode, useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import {
   LayoutDashboard,
@@ -30,6 +30,8 @@ export default function Layout({ children, currentPage, onNavigate }: LayoutProp
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const notificationRef = useRef<HTMLDivElement | null>(null);
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!profile) return;
@@ -43,6 +45,38 @@ export default function Layout({ children, currentPage, onNavigate }: LayoutProp
       clearInterval(interval);
     };
   }, [profile]);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(min-width: 1024px)');
+    setSidebarOpen(mediaQuery.matches);
+
+    const handleChange = (event: MediaQueryListEvent) => {
+      setSidebarOpen(event.matches);
+    };
+
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, []);
+
+  useEffect(() => {
+    setShowNotifications(false);
+    setShowUserMenu(false);
+  }, [currentPage]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (notificationRef.current?.contains(target) || userMenuRef.current?.contains(target)) {
+        return;
+      }
+      setShowNotifications(false);
+      setShowUserMenu(false);
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const loadNotifications = async () => {
     if (!profile) return;
@@ -99,7 +133,7 @@ export default function Layout({ children, currentPage, onNavigate }: LayoutProp
       <aside
         className={`fixed top-0 left-0 z-50 h-screen w-64 bg-gradient-to-b from-slate-900 to-slate-800 transform transition-transform duration-300 ease-in-out ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } lg:translate-x-0`}
+        }`}
       >
         <div className="flex items-center gap-3 p-6 border-b border-white/10">
           <div className="bg-blue-600 p-2 rounded-lg">
@@ -136,12 +170,12 @@ export default function Layout({ children, currentPage, onNavigate }: LayoutProp
         </nav>
       </aside>
 
-      <div className="lg:pl-64">
-        <header className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm">
+      <div className={`transition-[padding] duration-300 ${sidebarOpen ? 'lg:pl-64' : 'lg:pl-0'}`}>
+        <header className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-md">
           <div className="flex items-center justify-between px-4 py-4">
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="lg:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
             >
               {sidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
@@ -151,9 +185,12 @@ export default function Layout({ children, currentPage, onNavigate }: LayoutProp
             </h2>
 
             <div className="flex items-center gap-4">
-              <div className="relative">
+              <div className="relative" ref={notificationRef}>
                 <button
-                  onClick={() => setShowNotifications(!showNotifications)}
+                  onClick={() => {
+                    setShowNotifications((prev) => !prev);
+                    setShowUserMenu(false);
+                  }}
                   className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors"
                 >
                   <Bell className="w-6 h-6 text-gray-700" />
@@ -215,9 +252,12 @@ export default function Layout({ children, currentPage, onNavigate }: LayoutProp
                 )}
               </div>
 
-              <div className="relative">
+              <div className="relative" ref={userMenuRef}>
                 <button
-                  onClick={() => setShowUserMenu(!showUserMenu)}
+                  onClick={() => {
+                    setShowUserMenu((prev) => !prev);
+                    setShowNotifications(false);
+                  }}
                   className="flex items-center gap-3 p-2 rounded-full hover:bg-gray-100 transition-colors"
                 >
                   <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-semibold">

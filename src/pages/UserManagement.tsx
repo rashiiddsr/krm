@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import type { Profile } from '../lib/database.types';
-import { Plus, Search, Edit, Trash2, User, Mail, Phone, AtSign, X } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, User, X } from 'lucide-react';
 
 export default function UserManagement() {
   const [users, setUsers] = useState<Profile[]>([]);
@@ -157,63 +157,73 @@ export default function UserManagement() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredUsers.length === 0 ? (
-          <div className="col-span-full bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
-            <User className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-            <p className="text-gray-600">Belum ada user</p>
-          </div>
-        ) : (
-          filteredUsers.map((user) => (
-            <div
-              key={user.id}
-              className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow"
-            >
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="bg-blue-100 p-3 rounded-full">
-                    <User className="w-6 h-6 text-blue-600" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-gray-900">{user.full_name}</h3>
-                    <span className="text-xs text-gray-500 capitalize">{user.role}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-2 mb-4">
-                <div className="flex items-center gap-2 text-gray-600">
-                  <Mail className="w-4 h-4 flex-shrink-0" />
-                  <span className="text-sm truncate">{user.email}</span>
-                </div>
-                <div className="flex items-center gap-2 text-gray-600">
-                  <AtSign className="w-4 h-4 flex-shrink-0" />
-                  <span className="text-sm truncate">{user.username}</span>
-                </div>
-                <div className="flex items-center gap-2 text-gray-600">
-                  <Phone className="w-4 h-4 flex-shrink-0" />
-                  <span className="text-sm truncate">{user.no_hp}</span>
-                </div>
-              </div>
-
-              <div className="flex gap-2 pt-4 border-t border-gray-200">
-                <button
-                  onClick={() => openEditModal(user)}
-                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-                >
-                  <Edit className="w-4 h-4" />
-                  Edit
-                </button>
-                <button
-                  onClick={() => handleDelete(user.id)}
-                  className="flex items-center justify-center gap-2 px-3 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          ))
-        )}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Nama
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Role
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Email
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Username
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  No HP
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Aksi
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 bg-white">
+              {filteredUsers.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-10 text-center">
+                    <User className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                    <p className="text-gray-600">Belum ada user</p>
+                  </td>
+                </tr>
+              ) : (
+                filteredUsers.map((user) => (
+                  <tr key={user.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-4 text-sm font-semibold text-gray-900">
+                      {user.full_name}
+                    </td>
+                    <td className="px-4 py-4 text-sm text-gray-600 capitalize">{user.role}</td>
+                    <td className="px-4 py-4 text-sm text-gray-600">{user.email}</td>
+                    <td className="px-4 py-4 text-sm text-gray-600">{user.username}</td>
+                    <td className="px-4 py-4 text-sm text-gray-600">{user.no_hp}</td>
+                    <td className="px-4 py-4 text-right">
+                      <div className="inline-flex items-center gap-2">
+                        <button
+                          onClick={() => openEditModal(user)}
+                          className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                        >
+                          <Edit className="w-4 h-4" />
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDelete(user.id)}
+                          className="flex items-center justify-center px-3 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
+                          aria-label={`Hapus user ${user.full_name}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {showModal && (

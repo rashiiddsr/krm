@@ -12,6 +12,8 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const SESSION_STORAGE_KEY = 'krm.auth.session';
+const SESSION_TTL_MS = 1000 * 60 * 60 * 6;
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -19,12 +21,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const storedSession = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (storedSession) {
+      try {
+        const parsed = JSON.parse(storedSession) as { session?: AuthSession; expiresAt?: number };
+        if (parsed.session && parsed.expiresAt && Date.now() < parsed.expiresAt) {
+          setUser(parsed.session.user);
+          setProfile(parsed.session.profile);
+        } else {
+          localStorage.removeItem(SESSION_STORAGE_KEY);
+        }
+      } catch (error) {
+        localStorage.removeItem(SESSION_STORAGE_KEY);
+      }
+    }
     setLoading(false);
   }, []);
 
   const applySession = (session: AuthSession) => {
     setUser(session.user);
     setProfile(session.profile);
+    localStorage.setItem(
+      SESSION_STORAGE_KEY,
+      JSON.stringify({ session, expiresAt: Date.now() + SESSION_TTL_MS })
+    );
   };
 
   const signIn = async (email: string, password: string) => {
@@ -36,6 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await api.logout();
     setUser(null);
     setProfile(null);
+    localStorage.removeItem(SESSION_STORAGE_KEY);
   };
 
   const value = {
@@ -44,7 +65,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading,
     signIn,
     signOut,
-    updateProfileState: setProfile,
+    updateProfileState: (nextProfile: Profile) => {
+      setProfile(nextProfile);
+      setUser((prevUser) => {
+        if (prevUser) {
+          localStorage.setItem(
+            SESSION_STORAGE_KEY,
+            JSON.stringify({
+              session: { user: prevUser, profile: nextProfile },
+              expiresAt: Date.now() + SESSION_TTL_MS,
+            })
+          );
+        }
+        return prevUser;
+      });
+    },
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
