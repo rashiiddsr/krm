@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { api } from '../lib/api';
 import type { Prospect, FollowUp, Profile } from '../lib/database.types';
-import { Download, Filter, Calendar, TrendingUp, Users, CheckCircle, Clock } from 'lucide-react';
+import { Download, Filter, Calendar, Users, CheckCircle } from 'lucide-react';
 
 interface ReportData {
   totalProspects: number;
@@ -38,22 +38,11 @@ export default function Reports() {
   const loadReportData = async () => {
     setLoading(true);
     try {
-      const { data: prospectsData } = await supabase
-        .from('prospects')
-        .select('*')
-        .gte('created_at', dateRange.start)
-        .lte('created_at', dateRange.end + 'T23:59:59');
-
-      const { data: followUpsData } = await supabase
-        .from('follow_ups')
-        .select('*')
-        .gte('created_at', dateRange.start)
-        .lte('created_at', dateRange.end + 'T23:59:59');
-
-      const { data: salesData } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('role', 'sales');
+      const [prospectsData, followUpsData, salesData] = await Promise.all([
+        api.listProspects({ startDate: dateRange.start, endDate: dateRange.end }),
+        api.listFollowUps({ startDate: dateRange.start, endDate: dateRange.end }),
+        api.listProfiles('sales'),
+      ]);
 
       if (prospectsData) setProspects(prospectsData);
       if (followUpsData) setFollowUps(followUpsData);
@@ -86,8 +75,7 @@ export default function Reports() {
       setReportData({
         totalProspects: prospectsData?.length || 0,
         totalFollowUps: followUpsData?.length || 0,
-        completedFollowUps:
-          followUpsData?.filter((f) => f.status === 'completed').length || 0,
+        completedFollowUps: followUpsData?.filter((f) => f.status === 'completed').length || 0,
         pendingFollowUps:
           followUpsData?.filter((f) => f.status === 'pending' || f.status === 'in_progress')
             .length || 0,
@@ -248,7 +236,7 @@ export default function Reports() {
               </p>
             </div>
             <div className="bg-orange-50 p-3 rounded-xl">
-              <Clock className="w-8 h-8 text-orange-600" />
+              <Calendar className="w-8 h-8 text-orange-600" />
             </div>
           </div>
         </div>
@@ -256,71 +244,33 @@ export default function Reports() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            Prospek Berdasarkan Status
-          </h2>
-          <div className="space-y-4">
-            {reportData.prospectsByStatus.map((item) => {
-              const percentage =
-                reportData.totalProspects > 0
-                  ? (item.count / reportData.totalProspects) * 100
-                  : 0;
-              const statusLabel = {
-                menunggu_follow_up: 'Menunggu Follow-Up',
-                dalam_follow_up: 'Dalam Follow-Up',
-                selesai: 'Selesai',
-              }[item.status];
-              const statusColor = {
-                menunggu_follow_up: 'bg-yellow-500',
-                dalam_follow_up: 'bg-blue-500',
-                selesai: 'bg-green-500',
-              }[item.status];
-
-              return (
-                <div key={item.status}>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-gray-700">{statusLabel}</span>
-                    <span className="text-sm font-semibold text-gray-900">{item.count}</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div
-                      className={`${statusColor} h-2 rounded-full transition-all duration-300`}
-                      style={{ width: `${percentage}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Prospek Berdasarkan Status</h2>
+          <div className="space-y-3">
+            {reportData.prospectsByStatus.map((item) => (
+              <div key={item.status} className="flex items-center justify-between">
+                <span className="text-gray-700 capitalize">
+                  {item.status.replace('_', ' ')}
+                </span>
+                <span className="font-semibold text-gray-900">{item.count}</span>
+              </div>
+            ))}
           </div>
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <TrendingUp className="w-5 h-5 text-gray-700" />
-            <h2 className="text-lg font-semibold text-gray-900">Performa Sales</h2>
-          </div>
-          <div className="space-y-4">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Performa Sales</h2>
+          <div className="space-y-3">
             {reportData.salesPerformance.length === 0 ? (
-              <p className="text-gray-500 text-center py-4">Belum ada data</p>
+              <p className="text-sm text-gray-500">Belum ada data sales</p>
             ) : (
               reportData.salesPerformance.map((item) => (
-                <div
-                  key={item.sales.id}
-                  className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-                >
-                  <div>
-                    <p className="font-medium text-gray-900">{item.sales.full_name}</p>
-                    <p className="text-sm text-gray-600 mt-1">
-                      {item.prospectsCount} prospek • {item.completedFollowUps} follow-up selesai
-                    </p>
-                  </div>
+                <div key={item.sales.id} className="flex items-center justify-between">
+                  <span className="text-gray-700">{item.sales.full_name}</span>
                   <div className="text-right">
-                    <div className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm font-medium">
-                      {item.prospectsCount > 0
-                        ? Math.round((item.completedFollowUps / item.prospectsCount) * 100)
-                        : 0}
-                      %
-                    </div>
+                    <p className="text-sm text-gray-500">Prospek: {item.prospectsCount}</p>
+                    <p className="text-sm text-gray-500">
+                      Follow-Up Selesai: {item.completedFollowUps}
+                    </p>
                   </div>
                 </div>
               ))

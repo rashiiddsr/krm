@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import { api } from '../lib/api';
 import type { FollowUp, Prospect, Profile } from '../lib/database.types';
 import { Calendar, CheckCircle, Clock, Search, User, Phone, FileText, X } from 'lucide-react';
 
@@ -51,23 +51,10 @@ export default function FollowUps() {
     if (!profile) return;
 
     try {
-      let query = supabase
-        .from('follow_ups')
-        .select(`
-          *,
-          prospect:prospects(*),
-          assignedToProfile:profiles!follow_ups_assigned_to_fkey(*),
-          assignedByProfile:profiles!follow_ups_assigned_by_fkey(*)
-        `)
-        .order('scheduled_date', { ascending: true });
+      const data = await api.listFollowUps({
+        assignedTo: profile.role === 'sales' ? profile.id : undefined,
+      });
 
-      if (profile.role === 'sales') {
-        query = query.eq('assigned_to', profile.id);
-      }
-
-      const { data, error } = await query;
-
-      if (error) throw error;
       setFollowUps(data || []);
       setFilteredFollowUps(data || []);
     } catch (error) {
@@ -92,18 +79,15 @@ export default function FollowUps() {
     if (!selectedFollowUp || !profile) return;
 
     try {
-      const updates: any = {
-        status: updateData.status,
+      const updates: Partial<FollowUp> = {
+        status: updateData.status as FollowUp['status'],
         notes: updateData.notes,
       };
 
       if (updateData.status === 'completed') {
         updates.completed_at = new Date().toISOString();
 
-        await supabase
-          .from('prospects')
-          .update({ status: 'selesai' })
-          .eq('id', selectedFollowUp.prospect_id);
+        await api.updateProspect(selectedFollowUp.prospect_id, { status: 'selesai' });
       }
 
       if (updateData.status === 'rescheduled') {
@@ -111,20 +95,16 @@ export default function FollowUps() {
         updates.status = 'pending';
       }
 
-      const { error: updateError } = await supabase
-        .from('follow_ups')
-        .update(updates)
-        .eq('id', selectedFollowUp.id);
+      await api.updateFollowUp(selectedFollowUp.id, updates);
 
-      if (updateError) throw updateError;
-
-      await supabase.from('notifications').insert({
+      await api.createNotifications({
         user_id: selectedFollowUp.assigned_by,
         type: 'follow_up_updated',
         title: 'Follow-Up Diupdate',
         message: `${profile.full_name} telah mengupdate follow-up untuk prospek: ${selectedFollowUp.prospect?.nama}`,
         reference_id: selectedFollowUp.id,
         reference_type: 'follow_up',
+        is_read: false,
       });
 
       setShowUpdateModal(false);

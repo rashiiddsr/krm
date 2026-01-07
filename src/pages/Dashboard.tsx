@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import { api } from '../lib/api';
 import { Users, ClipboardList, CheckCircle, Clock, TrendingUp, AlertCircle } from 'lucide-react';
 
 interface Stats {
@@ -37,32 +37,28 @@ export default function Dashboard() {
 
     try {
       if (profile.role === 'admin') {
-        const [prospectsRes, followUpsRes, salesRes] = await Promise.all([
-          supabase.from('prospects').select('id', { count: 'exact', head: true }),
-          supabase.from('follow_ups').select('id, status', { count: 'exact' }),
-          supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'sales'),
+        const [prospects, followUps, sales, notifications] = await Promise.all([
+          api.listProspects({}),
+          api.listFollowUps({}),
+          api.listProfiles('sales'),
+          api.listNotifications({ userId: profile.id, limit: 5 }),
         ]);
 
-        const pendingFollowUps = followUpsRes.data?.filter(f => f.status === 'pending' || f.status === 'in_progress').length || 0;
-        const completedFollowUps = followUpsRes.data?.filter(f => f.status === 'completed').length || 0;
+        const pendingFollowUps =
+          followUps?.filter((f) => f.status === 'pending' || f.status === 'in_progress').length || 0;
+        const completedFollowUps =
+          followUps?.filter((f) => f.status === 'completed').length || 0;
 
         setStats({
-          totalProspects: prospectsRes.count || 0,
+          totalProspects: prospects?.length || 0,
           pendingFollowUps,
           completedFollowUps,
-          totalSales: salesRes.count || 0,
+          totalSales: sales?.length || 0,
         });
-
-        const { data: notifications } = await supabase
-          .from('notifications')
-          .select('*')
-          .eq('user_id', profile.id)
-          .order('created_at', { ascending: false })
-          .limit(5);
 
         if (notifications) {
           setRecentActivities(
-            notifications.map(n => ({
+            notifications.map((n) => ({
               id: n.id,
               type: n.type,
               description: n.message,
@@ -71,31 +67,27 @@ export default function Dashboard() {
           );
         }
       } else {
-        const [prospectsRes, followUpsRes] = await Promise.all([
-          supabase.from('prospects').select('id', { count: 'exact', head: true }).eq('sales_id', profile.id),
-          supabase.from('follow_ups').select('id, status', { count: 'exact' }).eq('assigned_to', profile.id),
+        const [prospects, followUps, notifications] = await Promise.all([
+          api.listProspects({ salesId: profile.id }),
+          api.listFollowUps({ assignedTo: profile.id }),
+          api.listNotifications({ userId: profile.id, limit: 5 }),
         ]);
 
-        const pendingFollowUps = followUpsRes.data?.filter(f => f.status === 'pending' || f.status === 'in_progress').length || 0;
-        const completedFollowUps = followUpsRes.data?.filter(f => f.status === 'completed').length || 0;
+        const pendingFollowUps =
+          followUps?.filter((f) => f.status === 'pending' || f.status === 'in_progress').length || 0;
+        const completedFollowUps =
+          followUps?.filter((f) => f.status === 'completed').length || 0;
 
         setStats({
-          totalProspects: prospectsRes.count || 0,
+          totalProspects: prospects?.length || 0,
           pendingFollowUps,
           completedFollowUps,
           totalSales: 0,
         });
 
-        const { data: notifications } = await supabase
-          .from('notifications')
-          .select('*')
-          .eq('user_id', profile.id)
-          .order('created_at', { ascending: false })
-          .limit(5);
-
         if (notifications) {
           setRecentActivities(
-            notifications.map(n => ({
+            notifications.map((n) => ({
               id: n.id,
               type: n.type,
               description: n.message,
@@ -119,60 +111,61 @@ export default function Dashboard() {
     );
   }
 
-  const statCards = profile?.role === 'admin'
-    ? [
-        {
-          title: 'Total Prospek',
-          value: stats.totalProspects,
-          icon: Users,
-          color: 'bg-blue-500',
-          bgColor: 'bg-blue-50',
-        },
-        {
-          title: 'Follow-Up Pending',
-          value: stats.pendingFollowUps,
-          icon: Clock,
-          color: 'bg-orange-500',
-          bgColor: 'bg-orange-50',
-        },
-        {
-          title: 'Follow-Up Selesai',
-          value: stats.completedFollowUps,
-          icon: CheckCircle,
-          color: 'bg-green-500',
-          bgColor: 'bg-green-50',
-        },
-        {
-          title: 'Total Sales',
-          value: stats.totalSales,
-          icon: TrendingUp,
-          color: 'bg-purple-500',
-          bgColor: 'bg-purple-50',
-        },
-      ]
-    : [
-        {
-          title: 'Prospek Saya',
-          value: stats.totalProspects,
-          icon: Users,
-          color: 'bg-blue-500',
-          bgColor: 'bg-blue-50',
-        },
-        {
-          title: 'Follow-Up Pending',
-          value: stats.pendingFollowUps,
-          icon: Clock,
-          color: 'bg-orange-500',
-          bgColor: 'bg-orange-50',
-        },
-        {
-          title: 'Follow-Up Selesai',
-          value: stats.completedFollowUps,
-          icon: CheckCircle,
-          color: 'bg-green-500',
-          bgColor: 'bg-green-50',
-        },
-      ];
+  const statCards =
+    profile?.role === 'admin'
+      ? [
+          {
+            title: 'Total Prospek',
+            value: stats.totalProspects,
+            icon: Users,
+            color: 'bg-blue-500',
+            bgColor: 'bg-blue-50',
+          },
+          {
+            title: 'Follow-Up Pending',
+            value: stats.pendingFollowUps,
+            icon: Clock,
+            color: 'bg-orange-500',
+            bgColor: 'bg-orange-50',
+          },
+          {
+            title: 'Follow-Up Selesai',
+            value: stats.completedFollowUps,
+            icon: CheckCircle,
+            color: 'bg-green-500',
+            bgColor: 'bg-green-50',
+          },
+          {
+            title: 'Total Sales',
+            value: stats.totalSales,
+            icon: TrendingUp,
+            color: 'bg-purple-500',
+            bgColor: 'bg-purple-50',
+          },
+        ]
+      : [
+          {
+            title: 'Prospek Saya',
+            value: stats.totalProspects,
+            icon: Users,
+            color: 'bg-blue-500',
+            bgColor: 'bg-blue-50',
+          },
+          {
+            title: 'Follow-Up Pending',
+            value: stats.pendingFollowUps,
+            icon: Clock,
+            color: 'bg-orange-500',
+            bgColor: 'bg-orange-50',
+          },
+          {
+            title: 'Follow-Up Selesai',
+            value: stats.completedFollowUps,
+            icon: CheckCircle,
+            color: 'bg-green-500',
+            bgColor: 'bg-green-50',
+          },
+        ];
 
   return (
     <div className="space-y-6">
@@ -180,9 +173,7 @@ export default function Dashboard() {
         <h1 className="text-2xl font-bold text-gray-900">
           Selamat Datang, {profile?.full_name}
         </h1>
-        <p className="text-gray-600 mt-1">
-          Berikut adalah ringkasan aktivitas hari ini
-        </p>
+        <p className="text-gray-600 mt-1">Berikut adalah ringkasan aktivitas hari ini</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

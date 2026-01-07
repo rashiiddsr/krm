@@ -12,7 +12,7 @@ import {
   UserCog,
   FileText
 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { api } from '../lib/api';
 import type { Notification } from '../lib/database.types';
 
 interface LayoutProps {
@@ -29,87 +29,73 @@ export default function Layout({ children, currentPage, onNavigate }: LayoutProp
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
-    if (profile) {
+    if (!profile) return;
+
+    loadNotifications();
+    const interval = setInterval(() => {
       loadNotifications();
+    }, 30000);
 
-      const channel = supabase
-        .channel('notifications')
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'notifications',
-            filter: `user_id=eq.${profile.id}`,
-          },
-          () => {
-            loadNotifications();
-          }
-        )
-        .subscribe();
-
-      return () => {
-        supabase.removeChannel(channel);
-      };
-    }
+    return () => {
+      clearInterval(interval);
+    };
   }, [profile]);
 
   const loadNotifications = async () => {
     if (!profile) return;
 
-    const { data, error } = await supabase
-      .from('notifications')
-      .select('*')
-      .eq('user_id', profile.id)
-      .order('created_at', { ascending: false })
-      .limit(10);
-
-    if (!error && data) {
-      setNotifications(data);
-      setUnreadCount(data.filter(n => !n.is_read).length);
+    try {
+      const data = await api.listNotifications({ userId: profile.id, limit: 10 });
+      if (data) {
+        setNotifications(data);
+        setUnreadCount(data.filter((n) => !n.is_read).length);
+      }
+    } catch (error) {
+      console.error('Error loading notifications:', error);
     }
   };
 
   const markAsRead = async (notificationId: string) => {
-    await supabase
-      .from('notifications')
-      .update({ is_read: true })
-      .eq('id', notificationId);
-
+    await api.markNotificationRead(notificationId);
     loadNotifications();
   };
 
   const markAllAsRead = async () => {
     if (!profile) return;
 
-    await supabase
-      .from('notifications')
-      .update({ is_read: true })
-      .eq('user_id', profile.id)
-      .eq('is_read', false);
-
+    await api.markAllNotificationsRead(profile.id);
     loadNotifications();
   };
 
-  const menuItems = profile?.role === 'admin'
-    ? [
-        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-        { id: 'prospects', label: 'Daftar Prospek', icon: Users },
-        { id: 'follow-ups', label: 'Daftar Follow Up', icon: ClipboardList },
-        { id: 'users', label: 'User Management', icon: UserCog },
-        { id: 'reports', label: 'Laporan', icon: FileText },
-      ]
-    : [
-        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-        { id: 'prospects', label: 'Daftar Prospek', icon: Users },
-        { id: 'follow-ups', label: 'Daftar Follow Up', icon: ClipboardList },
-      ];
+  const menuItems =
+    profile?.role === 'admin'
+      ? [
+          { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+          { id: 'prospects', label: 'Daftar Prospek', icon: Users },
+          { id: 'follow-ups', label: 'Daftar Follow Up', icon: ClipboardList },
+          { id: 'users', label: 'User Management', icon: UserCog },
+          { id: 'reports', label: 'Laporan', icon: FileText },
+        ]
+      : [
+          { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+          { id: 'prospects', label: 'Daftar Prospek', icon: Users },
+          { id: 'follow-ups', label: 'Daftar Follow Up', icon: ClipboardList },
+        ];
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className={`fixed inset-0 bg-black/50 z-40 lg:hidden transition-opacity ${sidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={() => setSidebarOpen(false)} />
+      <div
+        className={`fixed inset-0 bg-black/50 z-40 lg:hidden transition-opacity ${
+          sidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+        onClick={() => setSidebarOpen(false)}
+      />
 
-      <aside className={`fixed top-0 left-0 z-50 h-screen w-64 bg-gradient-to-b from-slate-900 to-slate-800 transform transition-transform duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
+      <aside
+        className={`fixed top-0 left-0 z-50 h-screen w-64 bg-gradient-to-b from-slate-900 to-slate-800 transform transition-transform duration-300 ease-in-out ${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        } lg:translate-x-0`}
+      >
         <div className="flex items-center gap-3 p-6 border-b border-white/10">
           <div className="bg-blue-600 p-2 rounded-lg">
             <Car className="w-6 h-6 text-white" />
@@ -170,7 +156,7 @@ export default function Layout({ children, currentPage, onNavigate }: LayoutProp
             </button>
 
             <h2 className="text-xl font-bold text-gray-900 hidden lg:block">
-              {menuItems.find(item => item.id === currentPage)?.label || 'Dashboard'}
+              {menuItems.find((item) => item.id === currentPage)?.label || 'Dashboard'}
             </h2>
 
             <div className="flex items-center gap-4">
@@ -215,11 +201,15 @@ export default function Layout({ children, currentPage, onNavigate }: LayoutProp
                             }`}
                           >
                             <div className="flex items-start gap-3">
-                              <div className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${
-                                !notification.is_read ? 'bg-blue-600' : 'bg-gray-300'
-                              }`} />
+                              <div
+                                className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${
+                                  !notification.is_read ? 'bg-blue-600' : 'bg-gray-300'
+                                }`}
+                              />
                               <div className="flex-1 min-w-0">
-                                <p className="font-medium text-sm text-gray-900">{notification.title}</p>
+                                <p className="font-medium text-sm text-gray-900">
+                                  {notification.title}
+                                </p>
                                 <p className="text-sm text-gray-600 mt-1">{notification.message}</p>
                                 <p className="text-xs text-gray-400 mt-1">
                                   {new Date(notification.created_at).toLocaleString('id-ID')}
@@ -237,9 +227,7 @@ export default function Layout({ children, currentPage, onNavigate }: LayoutProp
           </div>
         </header>
 
-        <main className="p-4 lg:p-8">
-          {children}
-        </main>
+        <main className="p-4 lg:p-8">{children}</main>
       </div>
     </div>
   );
