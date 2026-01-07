@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import { api } from '../lib/api';
 import type { Prospect, Profile } from '../lib/database.types';
 import { Plus, Search, Edit, Calendar, User, Phone, MapPin, FileText, X } from 'lucide-react';
 
@@ -51,21 +51,9 @@ export default function Prospects() {
     if (!profile) return;
 
     try {
-      let query = supabase
-        .from('prospects')
-        .select(`
-          *,
-          sales:profiles!prospects_sales_id_fkey(*)
-        `)
-        .order('created_at', { ascending: false });
-
-      if (profile.role === 'sales') {
-        query = query.eq('sales_id', profile.id);
-      }
-
-      const { data, error } = await query;
-
-      if (error) throw error;
+      const data = await api.listProspectsWithSales({
+        salesId: profile.role === 'sales' ? profile.id : undefined,
+      });
       setProspects(data || []);
       setFilteredProspects(data || []);
     } catch (error) {
@@ -76,12 +64,7 @@ export default function Prospects() {
   };
 
   const loadSalesList = async () => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('role', 'sales')
-      .order('full_name');
-
+    const data = await api.listProfiles('sales');
     if (data) setSalesList(data);
   };
 
@@ -91,28 +74,15 @@ export default function Prospects() {
 
     try {
       if (selectedProspect) {
-        const { error } = await supabase
-          .from('prospects')
-          .update(formData)
-          .eq('id', selectedProspect.id);
-
-        if (error) throw error;
+        await api.updateProspect(selectedProspect.id, formData);
       } else {
-        const { data: newProspect, error } = await supabase
-          .from('prospects')
-          .insert({
-            ...formData,
-            sales_id: profile.id,
-          })
-          .select()
-          .single();
+        const newProspect = await api.createProspect({
+          ...formData,
+          sales_id: profile.id,
+          status: 'menunggu_follow_up',
+        });
 
-        if (error) throw error;
-
-        const { data: adminProfiles } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('role', 'admin');
+        const adminProfiles = await api.listProfiles('admin');
 
         if (adminProfiles && newProspect) {
           const notifications = adminProfiles.map((admin) => ({
@@ -122,9 +92,10 @@ export default function Prospects() {
             message: `${profile.full_name} menambahkan prospek baru: ${formData.nama}`,
             reference_id: newProspect.id,
             reference_type: 'prospect' as const,
+            is_read: false,
           }));
 
-          await supabase.from('notifications').insert(notifications);
+          await api.createNotifications(notifications);
         }
       }
 
@@ -142,38 +113,25 @@ export default function Prospects() {
     if (!profile || !selectedProspect) return;
 
     try {
-      const { data: followUp, error: followUpError } = await supabase
-        .from('follow_ups')
-        .insert({
-          prospect_id: selectedProspect.id,
-          assigned_by: profile.id,
-          assigned_to: followUpData.assigned_to,
-          scheduled_date: followUpData.scheduled_date,
-          notes: followUpData.notes,
-        })
-        .select()
-        .single();
+      const followUp = await api.createFollowUp({
+        prospect_id: selectedProspect.id,
+        assigned_by: profile.id,
+        assigned_to: followUpData.assigned_to,
+        scheduled_date: followUpData.scheduled_date,
+        notes: followUpData.notes,
+        status: 'pending',
+      });
 
-      if (followUpError) throw followUpError;
+      await api.updateProspect(selectedProspect.id, { status: 'dalam_follow_up' });
 
-      await supabase
-        .from('prospects')
-        .update({ status: 'dalam_follow_up' })
-        .eq('id', selectedProspect.id);
-
-      const { data: salesProfile } = await supabase
-        .from('profiles')
-        .select('full_name')
-        .eq('id', followUpData.assigned_to)
-        .single();
-
-      await supabase.from('notifications').insert({
+      await api.createNotifications({
         user_id: followUpData.assigned_to,
         type: 'follow_up_assigned',
         title: 'Follow-Up Baru',
         message: `Anda ditugaskan untuk follow-up prospek: ${selectedProspect.nama}`,
         reference_id: followUp.id,
         reference_type: 'follow_up',
+        is_read: false,
       });
 
       setShowFollowUpModal(false);
@@ -323,7 +281,7 @@ export default function Prospects() {
                 </div>
 
                 <div className="flex gap-2">
-                  {(profile?.role === 'sales' && prospect.sales_id === profile.id) && (
+                  {profile?.role === 'sales' && prospect.sales_id === profile.id && (
                     <button
                       onClick={() => openEditModal(prospect)}
                       className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"

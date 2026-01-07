@@ -1,10 +1,9 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { User } from '@supabase/supabase-js';
-import { supabase } from '../lib/supabase';
 import type { Profile } from '../lib/database.types';
+import { api, AuthSession, AuthUser } from '../lib/api';
 
 interface AuthContextType {
-  user: User | null;
+  user: AuthUser | null;
   profile: Profile | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
@@ -15,98 +14,47 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        loadProfile(session.user.id);
-      } else {
+    const loadSession = async () => {
+      try {
+        const session = await api.getSession();
+        if (session) {
+          setUser(session.user);
+          setProfile(session.profile);
+        }
+      } catch (error) {
+        console.error('Error loading session:', error);
+      } finally {
         setLoading(false);
       }
-    });
+    };
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        loadProfile(session.user.id);
-      } else {
-        setProfile(null);
-        setLoading(false);
-      }
-    });
-
-    return () => subscription.unsubscribe();
+    loadSession();
   }, []);
 
-  const loadProfile = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle();
-
-      if (error) throw error;
-      setProfile(data);
-    } catch (error) {
-      console.error('Error loading profile:', error);
-    } finally {
-      setLoading(false);
-    }
+  const applySession = (session: AuthSession) => {
+    setUser(session.user);
+    setProfile(session.profile);
   };
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) throw error;
+    const session = await api.login(email, password);
+    applySession(session);
   };
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
+    await api.logout();
     setUser(null);
     setProfile(null);
   };
 
   const initializeDefaultAdmin = async () => {
     try {
-      const adminEmail = 'admin@krm.com';
-      const adminPassword = 'admin';
-
-      const { data: existingProfile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('email', adminEmail)
-        .maybeSingle();
-
-      if (!existingProfile) {
-        const { data: authData, error: signUpError } = await supabase.auth.signUp({
-          email: adminEmail,
-          password: adminPassword,
-        });
-
-        if (signUpError) throw signUpError;
-
-        if (authData.user) {
-          const { error: profileError } = await supabase
-            .from('profiles')
-            .insert({
-              id: authData.user.id,
-              email: adminEmail,
-              full_name: 'Administrator',
-              role: 'admin',
-            });
-
-          if (profileError) throw profileError;
-        }
-      }
+      await api.initializeDefaultAdmin();
     } catch (error) {
       console.error('Error initializing default admin:', error);
     }

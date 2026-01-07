@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { api } from '../lib/api';
 import type { Profile } from '../lib/database.types';
 import { Plus, Search, Edit, Trash2, User, Mail, X } from 'lucide-react';
 
@@ -31,13 +31,7 @@ export default function UserManagement() {
 
   const loadUsers = async () => {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('role', 'sales')
-        .order('full_name');
-
-      if (error) throw error;
+      const data = await api.listProfiles('sales');
       setUsers(data || []);
       setFilteredUsers(data || []);
     } catch (error) {
@@ -52,33 +46,17 @@ export default function UserManagement() {
 
     try {
       if (selectedUser) {
-        const { error } = await supabase
-          .from('profiles')
-          .update({
-            full_name: formData.full_name,
-            email: formData.email,
-          })
-          .eq('id', selectedUser.id);
-
-        if (error) throw error;
+        await api.updateProfile(selectedUser.id, {
+          full_name: formData.full_name,
+          email: formData.email,
+        });
       } else {
-        const { data: authData, error: signUpError } = await supabase.auth.signUp({
+        await api.createProfile({
+          full_name: formData.full_name,
           email: formData.email,
           password: formData.password,
+          role: 'sales',
         });
-
-        if (signUpError) throw signUpError;
-
-        if (authData.user) {
-          const { error: profileError } = await supabase.from('profiles').insert({
-            id: authData.user.id,
-            email: formData.email,
-            full_name: formData.full_name,
-            role: 'sales',
-          });
-
-          if (profileError) throw profileError;
-        }
       }
 
       setShowModal(false);
@@ -94,10 +72,7 @@ export default function UserManagement() {
     if (!confirm('Apakah Anda yakin ingin menghapus user ini?')) return;
 
     try {
-      const { error } = await supabase.auth.admin.deleteUser(userId);
-
-      if (error) throw error;
-
+      await api.deleteProfile(userId);
       loadUsers();
     } catch (error: any) {
       console.error('Error deleting user:', error);
