@@ -8,6 +8,12 @@ import cors from 'cors';
 import multer from 'multer';
 import bcrypt from 'bcryptjs';
 import { pool, withTransaction } from './db.js';
+import {
+  sendMail,
+  buildProspectEmail,
+  buildFollowUpAssignedEmail,
+  buildFollowUpCompletedEmail,
+} from './mailer.js';
 
 dotenv.config();
 
@@ -61,6 +67,76 @@ const buildWhereClause = (filters) => {
   return {
     where: clauses.length ? `WHERE ${clauses.join(' AND ')}` : '',
     values,
+  };
+};
+
+const fetchAdminRecipients = async () => {
+  const [rows] = await pool.query(
+    'SELECT id, email, full_name FROM users WHERE role = ?',
+    ['admin']
+  );
+  return rows;
+};
+
+const fetchFollowUpDetail = async (followUpId) => {
+  const [rows] = await pool.query(
+    `SELECT f.*, p.nama AS prospect_nama, p.no_hp AS prospect_no_hp, p.alamat AS prospect_alamat,
+            p.kebutuhan AS prospect_kebutuhan, p.status AS prospect_status, p.sales_id AS prospect_sales_id,
+            assigned_by.full_name AS assigned_by_name, assigned_by.email AS assigned_by_email,
+            assigned_by.username AS assigned_by_username, assigned_by.no_hp AS assigned_by_no_hp,
+            assigned_by.role AS assigned_by_role, assigned_to.full_name AS assigned_to_name,
+            assigned_to.email AS assigned_to_email, assigned_to.username AS assigned_to_username,
+            assigned_to.no_hp AS assigned_to_no_hp, assigned_to.role AS assigned_to_role
+     FROM follow_ups f
+     JOIN prospects p ON p.id = f.prospect_id
+     JOIN users assigned_by ON assigned_by.id = f.assigned_by
+     JOIN users assigned_to ON assigned_to.id = f.assigned_to
+     WHERE f.id = ?
+     LIMIT 1`,
+    [followUpId]
+  );
+
+  if (!rows[0]) return null;
+
+  const row = rows[0];
+  return {
+    followUp: {
+      id: row.id,
+      prospect_id: row.prospect_id,
+      assigned_by: row.assigned_by,
+      assigned_to: row.assigned_to,
+      scheduled_date: row.scheduled_date,
+      status: row.status,
+      notes: row.notes,
+      completed_at: row.completed_at,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    },
+    prospect: {
+      id: row.prospect_id,
+      nama: row.prospect_nama,
+      no_hp: row.prospect_no_hp,
+      alamat: row.prospect_alamat,
+      kebutuhan: row.prospect_kebutuhan,
+      status: row.prospect_status,
+      sales_id: row.prospect_sales_id,
+    },
+    assignedBy: {
+      id: row.assigned_by,
+      full_name: row.assigned_by_name,
+      email: row.assigned_by_email,
+      username: row.assigned_by_username,
+      no_hp: row.assigned_by_no_hp,
+      role: row.assigned_by_role,
+    },
+    assignedTo: {
+      id: row.assigned_to,
+      full_name: row.assigned_to_name,
+      email: row.assigned_to_email,
+      username: row.assigned_to_username,
+      no_hp: row.assigned_to_no_hp,
+      role: row.assigned_to_role,
+    },
   };
 };
 
@@ -342,7 +418,27 @@ app.post('/prospects', async (req, res, next) => {
     );
 
     const [rows] = await pool.query('SELECT * FROM prospects WHERE id = ? LIMIT 1', [id]);
-    res.status(201).json(rows[0]);
+    const createdProspect = rows[0];
+
+    try {
+      const [[salesProfile]] = await pool.query(
+        'SELECT full_name, email FROM users WHERE id = ? LIMIT 1',
+        [sales_id]
+      );
+      const adminRecipients = await fetchAdminRecipients();
+      const adminEmails = adminRecipients.map((admin) => admin.email).filter(Boolean);
+      if (adminEmails.length) {
+        await sendMail({
+          to: adminEmails,
+          subject: `Prospek Baru: ${createdProspect.nama}`,
+          html: buildProspectEmail({ prospect: createdProspect, salesProfile }),
+        });
+      }
+    } catch (error) {
+      console.error('Gagal mengirim email prospek baru:', error);
+    }
+
+    res.status(201).json(createdProspect);
   } catch (error) {
     next(error);
   }
@@ -454,7 +550,22 @@ app.post('/follow-ups', async (req, res, next) => {
     );
 
     const [rows] = await pool.query('SELECT * FROM follow_ups WHERE id = ? LIMIT 1', [id]);
-    res.status(201).json(rows[0]);
+    const createdFollowUp = rows[0];
+
+    try {
+      const detail = await fetchFollowUpDetail(id);
+      if (detail?.assignedTo?.email) {
+        await sendMail({
+          to: detail.assignedTo.email,
+          subject: `Follow-Up Baru: ${detail.prospect?.nama || 'Prospek'}`,
+          html: buildFollowUpAssignedEmail(detail),
+        });
+      }
+    } catch (error) {
+      console.error('Gagal mengirim email follow-up baru:', error);
+    }
+
+    res.status(201).json(createdFollowUp);
   } catch (error) {
     next(error);
   }
@@ -462,6 +573,10 @@ app.post('/follow-ups', async (req, res, next) => {
 
 app.put('/follow-ups/:id', async (req, res, next) => {
   try {
+    if (req.body?.status === 'completed' && !req.body?.completed_at) {
+      req.body.completed_at = new Date().toISOString();
+    }
+
     const fields = ['status', 'notes', 'scheduled_date', 'completed_at', 'assigned_to'];
     const updates = [];
     const values = [];
@@ -484,7 +599,26 @@ app.put('/follow-ups/:id', async (req, res, next) => {
     ]);
 
     const [rows] = await pool.query('SELECT * FROM follow_ups WHERE id = ? LIMIT 1', [req.params.id]);
-    res.json(rows[0]);
+    const updatedFollowUp = rows[0];
+
+    if (req.body?.status === 'completed') {
+      try {
+        const detail = await fetchFollowUpDetail(req.params.id);
+        const adminRecipients = await fetchAdminRecipients();
+        const adminEmails = adminRecipients.map((admin) => admin.email).filter(Boolean);
+        if (detail && adminEmails.length) {
+          await sendMail({
+            to: adminEmails,
+            subject: `Follow-Up Selesai: ${detail.prospect?.nama || 'Prospek'}`,
+            html: buildFollowUpCompletedEmail(detail),
+          });
+        }
+      } catch (error) {
+        console.error('Gagal mengirim email follow-up selesai:', error);
+      }
+    }
+
+    res.json(updatedFollowUp);
   } catch (error) {
     next(error);
   }

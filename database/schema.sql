@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS prospects (
   no_hp VARCHAR(50) NOT NULL,
   alamat TEXT NOT NULL,
   kebutuhan TEXT NOT NULL,
-  status ENUM('menunggu_follow_up', 'dalam_follow_up', 'selesai') NOT NULL DEFAULT 'menunggu_follow_up',
+  status ENUM('menunggu_follow_up', 'dalam_follow_up', 'selesai', 'close') NOT NULL DEFAULT 'menunggu_follow_up',
   sales_id CHAR(36) NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

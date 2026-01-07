@@ -30,7 +30,29 @@ export default function FollowUps() {
   });
 
   useEffect(() => {
+    if (!profile) return;
+
     loadFollowUps();
+    const interval = setInterval(loadFollowUps, 10000);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        loadFollowUps();
+      }
+    };
+
+    const handleFocus = () => {
+      loadFollowUps();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [profile]);
 
   useEffect(() => {

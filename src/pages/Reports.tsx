@@ -60,6 +60,10 @@ export default function Reports() {
           status: 'selesai',
           count: prospectsData?.filter((p) => p.status === 'selesai').length || 0,
         },
+        {
+          status: 'close',
+          count: prospectsData?.filter((p) => p.status === 'close').length || 0,
+        },
       ];
 
       const salesPerformance =
