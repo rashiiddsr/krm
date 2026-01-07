@@ -6,6 +6,7 @@ import Prospects from './pages/Prospects';
 import FollowUps from './pages/FollowUps';
 import UserManagement from './pages/UserManagement';
 import Reports from './pages/Reports';
+import Profile from './pages/Profile';
 import Layout from './components/Layout';
 
 function AppContent() {
@@ -39,6 +40,8 @@ function AppContent() {
         return profile.role === 'admin' ? <UserManagement /> : <Dashboard />;
       case 'reports':
         return profile.role === 'admin' ? <Reports /> : <Dashboard />;
+      case 'profile':
+        return <Profile />;
       default:
         return <Dashboard />;
     }

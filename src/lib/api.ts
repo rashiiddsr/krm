@@ -33,7 +33,6 @@ const buildQuery = (params: Record<string, string | number | boolean | undefined
 
 const apiRequest = async <T>(path: string, options: RequestOptions = {}): Promise<T> => {
   const response = await fetch(`${apiBaseUrl}${path}`, {
-    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       ...(options.headers ?? {}),
@@ -54,18 +53,23 @@ const apiRequest = async <T>(path: string, options: RequestOptions = {}): Promis
 };
 
 export const api = {
-  getSession: () => apiRequest<AuthSession | null>('/auth/session'),
   login: (email: string, password: string) =>
     apiRequest<AuthSession>('/auth/login', { method: 'POST', body: { email, password } }),
   logout: () => apiRequest<void>('/auth/logout', { method: 'POST' }),
-  initializeDefaultAdmin: () => apiRequest<void>('/auth/initialize-admin', { method: 'POST' }),
 
   listProfiles: (role?: string) =>
     apiRequest<Profile[]>(`/profiles${buildQuery({ role })}`),
   getProfile: (id: string) => apiRequest<Profile>(`/profiles/${id}`),
-  createProfile: (payload: { full_name: string; email: string; password: string; role: string }) =>
+  createProfile: (payload: {
+    full_name: string;
+    email: string;
+    username: string;
+    no_hp: string;
+    password: string;
+    role: string;
+  }) =>
     apiRequest<Profile>('/profiles', { method: 'POST', body: payload }),
-  updateProfile: (id: string, payload: Partial<Profile>) =>
+  updateProfile: (id: string, payload: Partial<Profile> & { password?: string }) =>
     apiRequest<Profile>(`/profiles/${id}`, { method: 'PUT', body: payload }),
   deleteProfile: (id: string) => apiRequest<void>(`/profiles/${id}`, { method: 'DELETE' }),
 

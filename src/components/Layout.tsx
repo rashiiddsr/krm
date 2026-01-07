@@ -10,7 +10,9 @@ import {
   X,
   Car,
   UserCog,
-  FileText
+  FileText,
+  UserCircle,
+  ChevronDown
 } from 'lucide-react';
 import { api } from '../lib/api';
 import type { Notification } from '../lib/database.types';
@@ -26,6 +28,7 @@ export default function Layout({ children, currentPage, onNavigate }: LayoutProp
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
@@ -73,6 +76,7 @@ export default function Layout({ children, currentPage, onNavigate }: LayoutProp
           { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
           { id: 'prospects', label: 'Daftar Prospek', icon: Users },
           { id: 'follow-ups', label: 'Daftar Follow Up', icon: ClipboardList },
+          { id: 'profile', label: 'Profil', icon: UserCircle },
           { id: 'users', label: 'User Management', icon: UserCog },
           { id: 'reports', label: 'Laporan', icon: FileText },
         ]
@@ -80,6 +84,7 @@ export default function Layout({ children, currentPage, onNavigate }: LayoutProp
           { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
           { id: 'prospects', label: 'Daftar Prospek', icon: Users },
           { id: 'follow-ups', label: 'Daftar Follow Up', icon: ClipboardList },
+          { id: 'profile', label: 'Profil', icon: UserCircle },
         ];
 
   return (
@@ -129,20 +134,6 @@ export default function Layout({ children, currentPage, onNavigate }: LayoutProp
             );
           })}
         </nav>
-
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-white/10">
-          <div className="bg-white/10 rounded-lg p-3 mb-3">
-            <p className="text-white font-medium text-sm">{profile?.full_name}</p>
-            <p className="text-blue-300 text-xs capitalize">{profile?.role}</p>
-          </div>
-          <button
-            onClick={() => signOut()}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-red-300 hover:bg-red-500/20 hover:text-red-200 transition-all"
-          >
-            <LogOut className="w-5 h-5" />
-            <span className="font-medium">Logout</span>
-          </button>
-        </div>
       </aside>
 
       <div className="lg:pl-64">
@@ -219,6 +210,50 @@ export default function Layout({ children, currentPage, onNavigate }: LayoutProp
                           </div>
                         ))
                       )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="relative">
+                <button
+                  onClick={() => setShowUserMenu(!showUserMenu)}
+                  className="flex items-center gap-3 p-2 rounded-full hover:bg-gray-100 transition-colors"
+                >
+                  <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-semibold">
+                    {profile?.full_name?.slice(0, 1).toUpperCase()}
+                  </div>
+                  <div className="hidden sm:block text-left">
+                    <p className="text-sm font-semibold text-gray-900">{profile?.full_name}</p>
+                    <p className="text-xs text-gray-500 capitalize">{profile?.role}</p>
+                  </div>
+                  <ChevronDown className="w-4 h-4 text-gray-500 hidden sm:block" />
+                </button>
+
+                {showUserMenu && (
+                  <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden">
+                    <div className="px-4 py-3 border-b border-gray-100">
+                      <p className="text-sm font-semibold text-gray-900">{profile?.full_name}</p>
+                      <p className="text-xs text-gray-500 capitalize">{profile?.role}</p>
+                    </div>
+                    <div className="py-2">
+                      <button
+                        onClick={() => {
+                          onNavigate('profile');
+                          setShowUserMenu(false);
+                        }}
+                        className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                      >
+                        <UserCircle className="w-4 h-4" />
+                        Profile Settings
+                      </button>
+                      <button
+                        onClick={() => signOut()}
+                        className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        Sign Out
+                      </button>
                     </div>
                   </div>
                 )}

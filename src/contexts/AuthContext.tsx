@@ -8,7 +8,7 @@ interface AuthContextType {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
-  initializeDefaultAdmin: () => Promise<void>;
+  updateProfileState: (profile: Profile) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -19,21 +19,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const loadSession = async () => {
-      try {
-        const session = await api.getSession();
-        if (session) {
-          setUser(session.user);
-          setProfile(session.profile);
-        }
-      } catch (error) {
-        console.error('Error loading session:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadSession();
+    setLoading(false);
   }, []);
 
   const applySession = (session: AuthSession) => {
@@ -52,21 +38,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null);
   };
 
-  const initializeDefaultAdmin = async () => {
-    try {
-      await api.initializeDefaultAdmin();
-    } catch (error) {
-      console.error('Error initializing default admin:', error);
-    }
-  };
-
   const value = {
     user,
     profile,
     loading,
     signIn,
     signOut,
-    initializeDefaultAdmin,
+    updateProfileState: setProfile,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
