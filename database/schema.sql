@@ -4,40 +4,23 @@
 CREATE TABLE IF NOT EXISTS users (
   id CHAR(36) NOT NULL PRIMARY KEY DEFAULT (UUID()),
   email VARCHAR(255) NOT NULL UNIQUE,
+  full_name VARCHAR(255) NOT NULL,
+  username VARCHAR(100) NOT NULL UNIQUE,
+  no_hp VARCHAR(50) NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
+  role ENUM('admin', 'sales') NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-INSERT INTO users (id, email, password_hash)
-VALUES (
-  '00000000-0000-0000-0000-000000000001',
-  'admin@krm.com',
-  '$2a$10$wB6t45YJPQkr5kVFXz7uAem2sC7QDsOQok3s8jr8T4uGyiqKIr9Y6'
-)
-ON DUPLICATE KEY UPDATE email = email;
-
-CREATE TABLE IF NOT EXISTS profiles (
-  id CHAR(36) NOT NULL PRIMARY KEY,
-  email VARCHAR(255) NOT NULL UNIQUE,
-  full_name VARCHAR(255) NOT NULL,
-  username VARCHAR(100) NOT NULL UNIQUE,
-  no_hp VARCHAR(50) NOT NULL,
-  role ENUM('admin', 'sales') NOT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT fk_profiles_users
-    FOREIGN KEY (id) REFERENCES users(id)
-    ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-INSERT INTO profiles (id, email, full_name, username, no_hp, role)
+INSERT INTO users (id, email, full_name, username, no_hp, password_hash, role)
 VALUES (
   '00000000-0000-0000-0000-000000000001',
   'admin@krm.com',
   'Administrator',
   'admin',
   '0812345678',
+  'admin',
   'admin'
 )
 ON DUPLICATE KEY UPDATE email = email;
@@ -53,7 +36,7 @@ CREATE TABLE IF NOT EXISTS prospects (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_prospects_sales
-    FOREIGN KEY (sales_id) REFERENCES profiles(id)
+    FOREIGN KEY (sales_id) REFERENCES users(id)
     ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -72,10 +55,10 @@ CREATE TABLE IF NOT EXISTS follow_ups (
     FOREIGN KEY (prospect_id) REFERENCES prospects(id)
     ON DELETE CASCADE,
   CONSTRAINT fk_followups_assigned_by
-    FOREIGN KEY (assigned_by) REFERENCES profiles(id)
+    FOREIGN KEY (assigned_by) REFERENCES users(id)
     ON DELETE CASCADE,
   CONSTRAINT fk_followups_assigned_to
-    FOREIGN KEY (assigned_to) REFERENCES profiles(id)
+    FOREIGN KEY (assigned_to) REFERENCES users(id)
     ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -90,7 +73,7 @@ CREATE TABLE IF NOT EXISTS notifications (
   is_read TINYINT(1) NOT NULL DEFAULT 0,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_notifications_user
-    FOREIGN KEY (user_id) REFERENCES profiles(id)
+    FOREIGN KEY (user_id) REFERENCES users(id)
     ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
