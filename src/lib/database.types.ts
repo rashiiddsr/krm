@@ -9,13 +9,14 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
-      profiles: {
+      users: {
         Row: {
           id: string
           email: string
           full_name: string
           username: string
           no_hp: string
+          password_hash: string
           role: 'admin' | 'sales'
           created_at: string
           updated_at: string
@@ -26,6 +27,7 @@ export interface Database {
           full_name: string
           username: string
           no_hp: string
+          password_hash: string
           role: 'admin' | 'sales'
           created_at?: string
           updated_at?: string
@@ -36,6 +38,7 @@ export interface Database {
           full_name?: string
           username?: string
           no_hp?: string
+          password_hash?: string
           role?: 'admin' | 'sales'
           created_at?: string
           updated_at?: string
@@ -153,7 +156,7 @@ export interface Database {
   }
 }
 
-export type Profile = Database['public']['Tables']['profiles']['Row'];
+export type Profile = Omit<Database['public']['Tables']['users']['Row'], 'password_hash'>;
 export type Prospect = Database['public']['Tables']['prospects']['Row'];
 export type FollowUp = Database['public']['Tables']['follow_ups']['Row'];
 export type Notification = Database['public']['Tables']['notifications']['Row'];

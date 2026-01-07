@@ -48,10 +48,9 @@ app.post('/auth/login', async (req, res, next) => {
     }
 
     const [rows] = await pool.query(
-      `SELECT u.id, u.email, u.password_hash, p.full_name, p.username, p.no_hp, p.role
-       FROM users u
-       JOIN profiles p ON p.id = u.id
-       WHERE u.email = ?
+      `SELECT id, email, password_hash, full_name, username, no_hp, role, created_at, updated_at
+       FROM users
+       WHERE email = ?
        LIMIT 1`,
       [email]
     );
@@ -62,7 +61,17 @@ app.post('/auth/login', async (req, res, next) => {
       return;
     }
 
-    const passwordMatch = await bcrypt.compare(password, user.password_hash);
+    let passwordMatch = false;
+    if (user.password_hash?.startsWith('$2')) {
+      passwordMatch = await bcrypt.compare(password, user.password_hash);
+    } else if (password === user.password_hash) {
+      passwordMatch = true;
+      const passwordHash = await bcrypt.hash(password, 10);
+      await pool.query('UPDATE users SET password_hash = ? WHERE id = ?', [
+        passwordHash,
+        user.id,
+      ]);
+    }
     if (!passwordMatch) {
       res.status(401).json({ message: 'Email atau password salah.' });
       return;
@@ -77,6 +86,8 @@ app.post('/auth/login', async (req, res, next) => {
         username: user.username,
         no_hp: user.no_hp,
         role: user.role,
+        created_at: user.created_at,
+        updated_at: user.updated_at,
       },
     });
   } catch (error) {
@@ -93,7 +104,7 @@ app.get('/profiles', async (req, res, next) => {
     const { role } = req.query;
     const { where, values } = buildWhereClause([{ clause: 'role = ?', value: role }]);
     const [rows] = await pool.query(
-      `SELECT id, email, full_name, username, no_hp, role FROM profiles ${where}`,
+      `SELECT id, email, full_name, username, no_hp, role, created_at, updated_at FROM users ${where}`,
       values
     );
     res.json(rows);
@@ -105,7 +116,7 @@ app.get('/profiles', async (req, res, next) => {
 app.get('/profiles/:id', async (req, res, next) => {
   try {
     const [rows] = await pool.query(
-      'SELECT id, email, full_name, username, no_hp, role FROM profiles WHERE id = ? LIMIT 1',
+      'SELECT id, email, full_name, username, no_hp, role, created_at, updated_at FROM users WHERE id = ? LIMIT 1',
       [req.params.id]
     );
     if (!rows[0]) {
@@ -131,15 +142,17 @@ app.post('/profiles', async (req, res, next) => {
       const passwordHash = await bcrypt.hash(password, 10);
 
       await connection.query(
-        'INSERT INTO users (id, email, password_hash) VALUES (?, ?, ?)',
-        [userId, email, passwordHash]
-      );
-      await connection.query(
-        'INSERT INTO profiles (id, email, full_name, username, no_hp, role) VALUES (?, ?, ?, ?, ?, ?)',
-        [userId, email, full_name, username, no_hp, role]
+        `INSERT INTO users (id, email, full_name, username, no_hp, password_hash, role)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [userId, email, full_name, username, no_hp, passwordHash, role]
       );
 
-      return { id: userId, email, full_name, username, no_hp, role };
+      const [rows] = await connection.query(
+        'SELECT id, email, full_name, username, no_hp, role, created_at, updated_at FROM users WHERE id = ? LIMIT 1',
+        [userId]
+      );
+
+      return rows[0];
     });
 
     res.status(201).json(newProfile);
@@ -181,18 +194,13 @@ app.put('/profiles/:id', async (req, res, next) => {
     }
 
     await withTransaction(async (connection) => {
-      if (email) {
-        await connection.query('UPDATE users SET email = ? WHERE id = ?', [email, req.params.id]);
-      }
       if (password) {
         const passwordHash = await bcrypt.hash(password, 10);
-        await connection.query('UPDATE users SET password_hash = ? WHERE id = ?', [
-          passwordHash,
-          req.params.id,
-        ]);
+        updates.push('password_hash = ?');
+        values.push(passwordHash);
       }
       if (updates.length) {
-        await connection.query(`UPDATE profiles SET ${updates.join(', ')} WHERE id = ?`, [
+        await connection.query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, [
           ...values,
           req.params.id,
         ]);
@@ -200,7 +208,7 @@ app.put('/profiles/:id', async (req, res, next) => {
     });
 
     const [rows] = await pool.query(
-      'SELECT id, email, full_name, username, no_hp, role FROM profiles WHERE id = ? LIMIT 1',
+      'SELECT id, email, full_name, username, no_hp, role, created_at, updated_at FROM users WHERE id = ? LIMIT 1',
       [req.params.id]
     );
 
@@ -239,10 +247,10 @@ app.get('/prospects/with-sales', async (req, res, next) => {
     const { salesId } = req.query;
     const { where, values } = buildWhereClause([{ clause: 'p.sales_id = ?', value: salesId }]);
     const [rows] = await pool.query(
-      `SELECT p.*, pr.id AS sales_profile_id, pr.full_name AS sales_name, pr.email AS sales_email,
-              pr.username AS sales_username, pr.no_hp AS sales_no_hp
+      `SELECT p.*, u.id AS sales_profile_id, u.full_name AS sales_name, u.email AS sales_email,
+              u.username AS sales_username, u.no_hp AS sales_no_hp, u.role AS sales_role
        FROM prospects p
-       JOIN profiles pr ON pr.id = p.sales_id
+       JOIN users u ON u.id = p.sales_id
        ${where}`,
       values
     );
@@ -254,7 +262,7 @@ app.get('/prospects/with-sales', async (req, res, next) => {
         email: row.sales_email,
         username: row.sales_username,
         no_hp: row.sales_no_hp,
-        role: 'sales',
+        role: row.sales_role,
       },
     }));
     res.json(mapped);
@@ -329,12 +337,13 @@ app.get('/follow-ups', async (req, res, next) => {
               p.kebutuhan AS prospect_kebutuhan, p.status AS prospect_status, p.sales_id AS prospect_sales_id,
               assigned_by.full_name AS assigned_by_name, assigned_by.email AS assigned_by_email,
               assigned_by.username AS assigned_by_username, assigned_by.no_hp AS assigned_by_no_hp,
-              assigned_to.full_name AS assigned_to_name, assigned_to.email AS assigned_to_email,
-              assigned_to.username AS assigned_to_username, assigned_to.no_hp AS assigned_to_no_hp
+              assigned_by.role AS assigned_by_role, assigned_to.full_name AS assigned_to_name,
+              assigned_to.email AS assigned_to_email, assigned_to.username AS assigned_to_username,
+              assigned_to.no_hp AS assigned_to_no_hp, assigned_to.role AS assigned_to_role
        FROM follow_ups f
        JOIN prospects p ON p.id = f.prospect_id
-       JOIN profiles assigned_by ON assigned_by.id = f.assigned_by
-       JOIN profiles assigned_to ON assigned_to.id = f.assigned_to
+       JOIN users assigned_by ON assigned_by.id = f.assigned_by
+       JOIN users assigned_to ON assigned_to.id = f.assigned_to
        ${where}`,
       values
     );
@@ -356,7 +365,7 @@ app.get('/follow-ups', async (req, res, next) => {
         email: row.assigned_by_email,
         username: row.assigned_by_username,
         no_hp: row.assigned_by_no_hp,
-        role: 'admin',
+        role: row.assigned_by_role,
       },
       assignedToProfile: {
         id: row.assigned_to,
@@ -364,7 +373,7 @@ app.get('/follow-ups', async (req, res, next) => {
         email: row.assigned_to_email,
         username: row.assigned_to_username,
         no_hp: row.assigned_to_no_hp,
-        role: 'sales',
+        role: row.assigned_to_role,
       },
     }));
 

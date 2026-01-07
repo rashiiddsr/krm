@@ -1,13 +1,27 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Car } from 'lucide-react';
+
+const REMEMBER_KEY = 'krm.remember';
+const REMEMBER_EMAIL_KEY = 'krm.remember.email';
+const REMEMBER_PASSWORD_KEY = 'krm.remember.password';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { signIn } = useAuth();
+
+  useEffect(() => {
+    const remembered = localStorage.getItem(REMEMBER_KEY) === 'true';
+    if (remembered) {
+      setRememberMe(true);
+      setEmail(localStorage.getItem(REMEMBER_EMAIL_KEY) || '');
+      setPassword(localStorage.getItem(REMEMBER_PASSWORD_KEY) || '');
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -16,16 +30,20 @@ export default function Login() {
 
     try {
       await signIn(email, password);
+      if (rememberMe) {
+        localStorage.setItem(REMEMBER_KEY, 'true');
+        localStorage.setItem(REMEMBER_EMAIL_KEY, email);
+        localStorage.setItem(REMEMBER_PASSWORD_KEY, password);
+      } else {
+        localStorage.removeItem(REMEMBER_KEY);
+        localStorage.removeItem(REMEMBER_EMAIL_KEY);
+        localStorage.removeItem(REMEMBER_PASSWORD_KEY);
+      }
     } catch (err: any) {
       setError(err.message || 'Login gagal. Periksa kembali email dan password Anda.');
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleQuickLogin = (userEmail: string, userPassword: string) => {
-    setEmail(userEmail);
-    setPassword(userPassword);
   };
 
   return (
@@ -81,6 +99,19 @@ export default function Login() {
               />
             </div>
 
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-2 text-sm text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                Ingat saya
+              </label>
+              <span className="text-xs text-gray-400">Hubungi admin jika lupa password</span>
+            </div>
+
             <button
               type="submit"
               disabled={loading}
@@ -89,24 +120,7 @@ export default function Login() {
               {loading ? 'Loading...' : 'Login'}
             </button>
           </form>
-
-          <div className="pt-4 border-t border-gray-200">
-            <p className="text-xs text-gray-500 text-center mb-3">Login cepat (untuk testing)</p>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('admin@krm.com', 'admin')}
-                className="flex-1 px-3 py-2 text-xs font-medium bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors"
-              >
-                Admin
-              </button>
-            </div>
-          </div>
         </div>
-
-        <p className="text-center text-white/70 text-sm mt-6">
-          Default Admin: admin@krm.com / admin
-        </p>
       </div>
     </div>
   );
