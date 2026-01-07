@@ -9,6 +9,14 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+INSERT INTO users (id, email, password_hash)
+VALUES (
+  '00000000-0000-0000-0000-000000000001',
+  'admin@krm.com',
+  '$2a$10$wB6t45YJPQkr5kVFXz7uAem2sC7QDsOQok3s8jr8T4uGyiqKIr9Y6'
+)
+ON DUPLICATE KEY UPDATE email = email;
+
 CREATE TABLE IF NOT EXISTS profiles (
   id CHAR(36) NOT NULL PRIMARY KEY,
   email VARCHAR(255) NOT NULL UNIQUE,
@@ -22,6 +30,17 @@ CREATE TABLE IF NOT EXISTS profiles (
     FOREIGN KEY (id) REFERENCES users(id)
     ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT INTO profiles (id, email, full_name, username, no_hp, role)
+VALUES (
+  '00000000-0000-0000-0000-000000000001',
+  'admin@krm.com',
+  'Administrator',
+  'admin',
+  '0812345678',
+  'admin'
+)
+ON DUPLICATE KEY UPDATE email = email;
 
 CREATE TABLE IF NOT EXISTS prospects (
   id CHAR(36) NOT NULL PRIMARY KEY DEFAULT (UUID()),

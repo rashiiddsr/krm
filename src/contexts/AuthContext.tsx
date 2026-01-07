@@ -8,7 +8,6 @@ interface AuthContextType {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
-  initializeDefaultAdmin: () => Promise<void>;
   updateProfileState: (profile: Profile) => void;
 }
 
@@ -39,21 +38,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null);
   };
 
-  const initializeDefaultAdmin = async () => {
-    try {
-      await api.initializeDefaultAdmin();
-    } catch (error) {
-      console.error('Error initializing default admin:', error);
-    }
-  };
-
   const value = {
     user,
     profile,
     loading,
     signIn,
     signOut,
-    initializeDefaultAdmin,
     updateProfileState: setProfile,
   };
 

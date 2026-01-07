@@ -56,7 +56,6 @@ export const api = {
   login: (email: string, password: string) =>
     apiRequest<AuthSession>('/auth/login', { method: 'POST', body: { email, password } }),
   logout: () => apiRequest<void>('/auth/logout', { method: 'POST' }),
-  initializeDefaultAdmin: () => apiRequest<void>('/auth/initialize-admin', { method: 'POST' }),
 
   listProfiles: (role?: string) =>
     apiRequest<Profile[]>(`/profiles${buildQuery({ role })}`),

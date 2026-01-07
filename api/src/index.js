@@ -17,29 +17,6 @@ app.use(
 );
 app.use(express.json());
 
-const ensureDefaultAdmin = async () => {
-  const adminEmail = 'admin@krm.com';
-  const adminPassword = 'admin';
-  const [existing] = await pool.query('SELECT id FROM users WHERE email = ? LIMIT 1', [adminEmail]);
-  if (existing.length > 0) {
-    return;
-  }
-
-  await withTransaction(async (connection) => {
-    const userId = crypto.randomUUID();
-    const passwordHash = await bcrypt.hash(adminPassword, 10);
-
-    await connection.query(
-      'INSERT INTO users (id, email, password_hash) VALUES (?, ?, ?)',
-      [userId, adminEmail, passwordHash]
-    );
-    await connection.query(
-      'INSERT INTO profiles (id, email, full_name, username, no_hp, role) VALUES (?, ?, ?, ?, ?, ?)',
-      [userId, adminEmail, 'Administrator', 'admin', '0000000000', 'admin']
-    );
-  });
-};
-
 const buildWhereClause = (filters) => {
   const clauses = [];
   const values = [];
@@ -60,15 +37,6 @@ const buildWhereClause = (filters) => {
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
-});
-
-app.post('/auth/initialize-admin', async (req, res, next) => {
-  try {
-    await ensureDefaultAdmin();
-    res.status(204).end();
-  } catch (error) {
-    next(error);
-  }
 });
 
 app.post('/auth/login', async (req, res, next) => {
