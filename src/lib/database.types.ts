@@ -54,7 +54,7 @@ export interface Database {
           no_hp: string
           alamat: string
           kebutuhan: string
-          status: 'menunggu_follow_up' | 'dalam_follow_up' | 'selesai'
+          status: 'menunggu_follow_up' | 'dalam_follow_up' | 'selesai' | 'close'
           sales_id: string
           created_at: string
           updated_at: string
@@ -65,7 +65,7 @@ export interface Database {
           no_hp: string
           alamat: string
           kebutuhan: string
-          status?: 'menunggu_follow_up' | 'dalam_follow_up' | 'selesai'
+          status?: 'menunggu_follow_up' | 'dalam_follow_up' | 'selesai' | 'close'
           sales_id: string
           created_at?: string
           updated_at?: string
@@ -76,7 +76,7 @@ export interface Database {
           no_hp?: string
           alamat?: string
           kebutuhan?: string
-          status?: 'menunggu_follow_up' | 'dalam_follow_up' | 'selesai'
+          status?: 'menunggu_follow_up' | 'dalam_follow_up' | 'selesai' | 'close'
           sales_id?: string
           created_at?: string
           updated_at?: string

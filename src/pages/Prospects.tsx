@@ -35,10 +35,33 @@ export default function Prospects() {
   });
 
   useEffect(() => {
+    if (!profile) return;
+
     loadProspects();
-    if (profile?.role === 'admin') {
+    if (profile.role === 'admin') {
       loadSalesList();
     }
+
+    const interval = setInterval(loadProspects, 10000);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        loadProspects();
+      }
+    };
+
+    const handleFocus = () => {
+      loadProspects();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [profile]);
 
   useEffect(() => {
@@ -157,6 +180,20 @@ export default function Prospects() {
     }
   };
 
+  const handleCloseProspect = async (prospect: ProspectWithSales) => {
+    if (!window.confirm(`Tutup prospek ${prospect.nama}? Status akan menjadi Close.`)) {
+      return;
+    }
+
+    try {
+      await api.updateProspect(prospect.id, { status: 'close' });
+      loadProspects();
+    } catch (error) {
+      console.error('Error closing prospect:', error);
+      alert('Gagal menutup prospek');
+    }
+  };
+
   const resetForm = () => {
     setFormData({
       nama: '',
@@ -207,6 +244,7 @@ export default function Prospects() {
       menunggu_follow_up: { label: 'Menunggu Follow-Up', color: 'bg-yellow-100 text-yellow-700' },
       dalam_follow_up: { label: 'Dalam Follow-Up', color: 'bg-blue-100 text-blue-700' },
       selesai: { label: 'Selesai', color: 'bg-green-100 text-green-700' },
+      close: { label: 'Close', color: 'bg-gray-200 text-gray-700' },
     };
     const config = statusConfig[status as keyof typeof statusConfig];
     return (
@@ -370,13 +408,21 @@ export default function Prospects() {
                             </button>
                           )}
                           {profile?.role === 'admin' && prospect.status === 'menunggu_follow_up' && (
-                            <button
-                              onClick={() => openFollowUpModal(prospect)}
-                              className="flex items-center gap-2 px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                            >
-                              <Calendar className="w-4 h-4" />
-                              Buat Follow-Up
-                            </button>
+                            <>
+                              <button
+                                onClick={() => handleCloseProspect(prospect)}
+                                className="flex items-center gap-2 px-3 py-2 text-sm bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                              >
+                                Close
+                              </button>
+                              <button
+                                onClick={() => openFollowUpModal(prospect)}
+                                className="flex items-center gap-2 px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                              >
+                                <Calendar className="w-4 h-4" />
+                                Buat Follow-Up
+                              </button>
+                            </>
                           )}
                         </div>
                       </td>

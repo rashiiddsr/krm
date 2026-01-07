@@ -39,10 +39,25 @@ export default function Layout({ children, currentPage, onNavigate }: LayoutProp
     loadNotifications();
     const interval = setInterval(() => {
       loadNotifications();
-    }, 30000);
+    }, 10000);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        loadNotifications();
+      }
+    };
+
+    const handleFocus = () => {
+      loadNotifications();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleFocus);
 
     return () => {
       clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleFocus);
     };
   }, [profile]);
 
@@ -179,16 +194,18 @@ export default function Layout({ children, currentPage, onNavigate }: LayoutProp
       <div className={`transition-[padding] duration-300 ${sidebarOpen ? 'lg:pl-64' : 'lg:pl-0'}`}>
         <header className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-gray-200 shadow-[0_2px_6px_rgba(15,23,42,0.08)] ring-1 ring-black/5">
           <div className="flex items-center justify-between px-4 py-4">
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-            >
-              {sidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-            </button>
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                {sidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              </button>
 
-            <h2 className="text-xl font-bold text-gray-900 hidden lg:block">
-              {menuItems.find((item) => item.id === currentPage)?.label || 'Dashboard'}
-            </h2>
+              <h2 className="text-xl font-bold text-gray-900 hidden lg:block">
+                {menuItems.find((item) => item.id === currentPage)?.label || 'Dashboard'}
+              </h2>
+            </div>
 
             <div className="flex items-center gap-4">
               <div className="relative" ref={notificationRef}>
@@ -197,7 +214,7 @@ export default function Layout({ children, currentPage, onNavigate }: LayoutProp
                     setShowNotifications((prev) => !prev);
                     setShowUserMenu(false);
                   }}
-                  className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                  className="relative p-2 rounded-lg border border-gray-200 bg-white shadow-sm hover:bg-gray-50 hover:shadow transition-colors"
                 >
                   <Bell className="w-6 h-6 text-gray-700" />
                   {unreadCount > 0 && (
@@ -264,7 +281,7 @@ export default function Layout({ children, currentPage, onNavigate }: LayoutProp
                     setShowUserMenu((prev) => !prev);
                     setShowNotifications(false);
                   }}
-                  className="flex items-center gap-3 p-2 rounded-full hover:bg-gray-100 transition-colors"
+                  className="flex items-center gap-3 p-2 rounded-full border border-gray-200 bg-white shadow-sm hover:bg-gray-50 hover:shadow transition-colors"
                 >
                   {profile?.profile_photo_url ? (
                     <img
