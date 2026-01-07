@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
 import type { Prospect, Profile } from '../lib/database.types';
-import { Plus, Search, Edit, Calendar, User, Phone, MapPin, FileText, X } from 'lucide-react';
+import { Plus, Search, Edit, Calendar, User, X, Eye } from 'lucide-react';
 
 interface ProspectWithSales extends Prospect {
   sales?: Profile;
@@ -13,10 +13,14 @@ export default function Prospects() {
   const [prospects, setProspects] = useState<ProspectWithSales[]>([]);
   const [filteredProspects, setFilteredProspects] = useState<ProspectWithSales[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterStartDate, setFilterStartDate] = useState('');
+  const [filterEndDate, setFilterEndDate] = useState('');
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showFollowUpModal, setShowFollowUpModal] = useState(false);
+  const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedProspect, setSelectedProspect] = useState<ProspectWithSales | null>(null);
+  const [detailProspect, setDetailProspect] = useState<ProspectWithSales | null>(null);
   const [salesList, setSalesList] = useState<Profile[]>([]);
   const [formData, setFormData] = useState({
     nama: '',
@@ -38,14 +42,16 @@ export default function Prospects() {
   }, [profile]);
 
   useEffect(() => {
-    const filtered = prospects.filter(
-      (p) =>
+    const filtered = prospects.filter((p) => {
+      const matchesSearch =
         p.nama.toLowerCase().includes(searchTerm.toLowerCase()) ||
         p.no_hp.includes(searchTerm) ||
-        p.kebutuhan.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+        p.kebutuhan.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesDate = isWithinDateRange(p.created_at);
+      return matchesSearch && matchesDate;
+    });
     setFilteredProspects(filtered);
-  }, [searchTerm, prospects]);
+  }, [searchTerm, filterStartDate, filterEndDate, prospects]);
 
   const loadProspects = async () => {
     if (!profile) return;
@@ -71,6 +77,14 @@ export default function Prospects() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profile) return;
+    if (
+      selectedProspect &&
+      profile.role === 'sales' &&
+      selectedProspect.status !== 'menunggu_follow_up'
+    ) {
+      alert('Prospek sudah diproses admin dan tidak bisa diedit lagi.');
+      return;
+    }
 
     try {
       if (selectedProspect) {
@@ -183,6 +197,11 @@ export default function Prospects() {
     setShowFollowUpModal(true);
   };
 
+  const openDetailModal = (prospect: ProspectWithSales) => {
+    setDetailProspect(prospect);
+    setShowDetailModal(true);
+  };
+
   const getStatusBadge = (status: string) => {
     const statusConfig = {
       menunggu_follow_up: { label: 'Menunggu Follow-Up', color: 'bg-yellow-100 text-yellow-700' },
@@ -195,6 +214,20 @@ export default function Prospects() {
         {config.label}
       </span>
     );
+  };
+
+  const isWithinDateRange = (dateValue: string) => {
+    if (!filterStartDate && !filterEndDate) return true;
+    const date = new Date(dateValue);
+    if (filterStartDate) {
+      const start = new Date(`${filterStartDate}T00:00:00`);
+      if (date < start) return false;
+    }
+    if (filterEndDate) {
+      const end = new Date(`${filterEndDate}T23:59:59`);
+      if (date > end) return false;
+    }
+    return true;
   };
 
   if (loading) {
@@ -226,7 +259,7 @@ export default function Prospects() {
         )}
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 space-y-3">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
           <input
@@ -237,73 +270,123 @@ export default function Prospects() {
             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
           />
         </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <input
+            type="date"
+            value={filterStartDate}
+            onChange={(e) => setFilterStartDate(e.target.value)}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+          />
+          <input
+            type="date"
+            value={filterEndDate}
+            onChange={(e) => setFilterEndDate(e.target.value)}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+          />
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4">
-        {filteredProspects.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
-            <User className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-            <p className="text-gray-600">Belum ada prospek</p>
-          </div>
-        ) : (
-          filteredProspects.map((prospect) => (
-            <div
-              key={prospect.id}
-              className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow"
-            >
-              <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-                <div className="flex-1 space-y-3">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900">{prospect.nama}</h3>
-                      {profile?.role === 'admin' && prospect.sales && (
-                        <p className="text-sm text-gray-500 mt-1">Sales: {prospect.sales.full_name}</p>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Nama
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  No HP
+                </th>
+                {profile?.role === 'admin' && (
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Sales
+                  </th>
+                )}
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Kebutuhan
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Tanggal
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Aksi
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 bg-white">
+              {filteredProspects.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={profile?.role === 'admin' ? 7 : 6}
+                    className="px-6 py-10 text-center"
+                  >
+                    <User className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                    <p className="text-gray-600">Belum ada prospek</p>
+                  </td>
+                </tr>
+              ) : (
+                filteredProspects.map((prospect) => {
+                  const isEditable =
+                    profile?.role === 'sales' &&
+                    prospect.sales_id === profile.id &&
+                    prospect.status === 'menunggu_follow_up';
+                  return (
+                    <tr key={prospect.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-4 text-sm font-semibold text-gray-900">
+                        {prospect.nama}
+                      </td>
+                      <td className="px-4 py-4 text-sm">{getStatusBadge(prospect.status)}</td>
+                      <td className="px-4 py-4 text-sm text-gray-600">{prospect.no_hp}</td>
+                      {profile?.role === 'admin' && (
+                        <td className="px-4 py-4 text-sm text-gray-600">
+                          {prospect.sales?.full_name || '-'}
+                        </td>
                       )}
-                    </div>
-                    {getStatusBadge(prospect.status)}
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <Phone className="w-4 h-4 flex-shrink-0" />
-                      <span className="text-sm">{prospect.no_hp}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <MapPin className="w-4 h-4 flex-shrink-0" />
-                      <span className="text-sm">{prospect.alamat}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-2 text-gray-600">
-                    <FileText className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                    <span className="text-sm">{prospect.kebutuhan}</span>
-                  </div>
-                </div>
-
-                <div className="flex gap-2">
-                  {profile?.role === 'sales' && prospect.sales_id === profile.id && (
-                    <button
-                      onClick={() => openEditModal(prospect)}
-                      className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-                    >
-                      <Edit className="w-4 h-4" />
-                      Edit
-                    </button>
-                  )}
-                  {profile?.role === 'admin' && prospect.status === 'menunggu_follow_up' && (
-                    <button
-                      onClick={() => openFollowUpModal(prospect)}
-                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                      <Calendar className="w-4 h-4" />
-                      Buat Follow-Up
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))
-        )}
+                      <td className="px-4 py-4 text-sm text-gray-600">
+                        <span className="block max-w-xs truncate">{prospect.kebutuhan}</span>
+                      </td>
+                      <td className="px-4 py-4 text-sm text-gray-600">
+                        {new Date(prospect.created_at).toLocaleDateString('id-ID')}
+                      </td>
+                      <td className="px-4 py-4 text-right">
+                        <div className="inline-flex items-center gap-2">
+                          <button
+                            onClick={() => openDetailModal(prospect)}
+                            className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                          >
+                            <Eye className="w-4 h-4" />
+                            Detail
+                          </button>
+                          {isEditable && (
+                            <button
+                              onClick={() => openEditModal(prospect)}
+                              className="flex items-center gap-2 px-3 py-2 text-sm bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                            >
+                              <Edit className="w-4 h-4" />
+                              Edit
+                            </button>
+                          )}
+                          {profile?.role === 'admin' && prospect.status === 'menunggu_follow_up' && (
+                            <button
+                              onClick={() => openFollowUpModal(prospect)}
+                              className="flex items-center gap-2 px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                            >
+                              <Calendar className="w-4 h-4" />
+                              Buat Follow-Up
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {showModal && (
@@ -325,48 +408,50 @@ export default function Prospects() {
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Nama</label>
-                <input
-                  type="text"
-                  value={formData.nama}
-                  onChange={(e) => setFormData({ ...formData, nama: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                  required
-                />
-              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Nama</label>
+                  <input
+                    type="text"
+                    value={formData.nama}
+                    onChange={(e) => setFormData({ ...formData, nama: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    required
+                  />
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">No HP</label>
-                <input
-                  type="text"
-                  value={formData.no_hp}
-                  onChange={(e) => setFormData({ ...formData, no_hp: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                  required
-                />
-              </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">No HP</label>
+                  <input
+                    type="text"
+                    value={formData.no_hp}
+                    onChange={(e) => setFormData({ ...formData, no_hp: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    required
+                  />
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Alamat</label>
-                <textarea
-                  value={formData.alamat}
-                  onChange={(e) => setFormData({ ...formData, alamat: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                  rows={3}
-                  required
-                />
-              </div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Alamat</label>
+                  <textarea
+                    value={formData.alamat}
+                    onChange={(e) => setFormData({ ...formData, alamat: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    rows={3}
+                    required
+                  />
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Kebutuhan</label>
-                <textarea
-                  value={formData.kebutuhan}
-                  onChange={(e) => setFormData({ ...formData, kebutuhan: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                  rows={3}
-                  required
-                />
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Kebutuhan</label>
+                  <textarea
+                    value={formData.kebutuhan}
+                    onChange={(e) => setFormData({ ...formData, kebutuhan: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    rows={3}
+                    required
+                  />
+                </div>
               </div>
 
               <div className="flex gap-3 pt-4">
@@ -414,42 +499,54 @@ export default function Prospects() {
                 <p className="text-sm text-gray-600 mt-1">{selectedProspect.kebutuhan}</p>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Assign ke Sales</label>
-                <select
-                  value={followUpData.assigned_to}
-                  onChange={(e) => setFollowUpData({ ...followUpData, assigned_to: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                  required
-                >
-                  <option value="">Pilih Sales</option>
-                  {salesList.map((sales) => (
-                    <option key={sales.id} value={sales.id}>
-                      {sales.full_name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Assign ke Sales
+                  </label>
+                  <select
+                    value={followUpData.assigned_to}
+                    onChange={(e) =>
+                      setFollowUpData({ ...followUpData, assigned_to: e.target.value })
+                    }
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    required
+                  >
+                    <option value="">Pilih Sales</option>
+                    {salesList.map((sales) => (
+                      <option key={sales.id} value={sales.id}>
+                        {sales.full_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Tanggal Follow-Up</label>
-                <input
-                  type="datetime-local"
-                  value={followUpData.scheduled_date}
-                  onChange={(e) => setFollowUpData({ ...followUpData, scheduled_date: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                  required
-                />
-              </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Tanggal Follow-Up
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={followUpData.scheduled_date}
+                    onChange={(e) =>
+                      setFollowUpData({ ...followUpData, scheduled_date: e.target.value })
+                    }
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    required
+                  />
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Catatan (Opsional)</label>
-                <textarea
-                  value={followUpData.notes}
-                  onChange={(e) => setFollowUpData({ ...followUpData, notes: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                  rows={3}
-                />
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Catatan (Opsional)
+                  </label>
+                  <textarea
+                    value={followUpData.notes}
+                    onChange={(e) => setFollowUpData({ ...followUpData, notes: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    rows={3}
+                  />
+                </div>
               </div>
 
               <div className="flex gap-3 pt-4">
@@ -471,6 +568,63 @@ export default function Prospects() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showDetailModal && detailProspect && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
+            <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-gray-900">Detail Prospek</h2>
+              <button
+                onClick={() => {
+                  setShowDetailModal(false);
+                  setDetailProspect(null);
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <p className="text-sm text-gray-500">Nama</p>
+                <p className="text-base font-semibold text-gray-900">{detailProspect.nama}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Status</p>
+                <div className="mt-1">{getStatusBadge(detailProspect.status)}</div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-gray-500">No HP</p>
+                  <p className="text-sm text-gray-900">{detailProspect.no_hp}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Tanggal Dibuat</p>
+                  <p className="text-sm text-gray-900">
+                    {new Date(detailProspect.created_at).toLocaleString('id-ID')}
+                  </p>
+                </div>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Alamat</p>
+                <p className="text-sm text-gray-900">{detailProspect.alamat}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Kebutuhan</p>
+                <p className="text-sm text-gray-900">{detailProspect.kebutuhan}</p>
+              </div>
+              {profile?.role === 'admin' && (
+                <div>
+                  <p className="text-sm text-gray-500">Sales</p>
+                  <p className="text-sm text-gray-900">
+                    {detailProspect.sales?.full_name || '-'}
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
