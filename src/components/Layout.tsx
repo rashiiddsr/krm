@@ -14,7 +14,7 @@ import {
   UserCircle,
   ChevronDown
 } from 'lucide-react';
-import { api } from '../lib/api';
+import { api, buildAssetUrl } from '../lib/api';
 import type { Notification } from '../lib/database.types';
 
 interface LayoutProps {
@@ -177,7 +177,7 @@ export default function Layout({ children, currentPage, onNavigate }: LayoutProp
       </aside>
 
       <div className={`transition-[padding] duration-300 ${sidebarOpen ? 'lg:pl-64' : 'lg:pl-0'}`}>
-        <header className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-md">
+        <header className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-gray-200 shadow-[0_2px_6px_rgba(15,23,42,0.08)] ring-1 ring-black/5">
           <div className="flex items-center justify-between px-4 py-4">
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -266,9 +266,17 @@ export default function Layout({ children, currentPage, onNavigate }: LayoutProp
                   }}
                   className="flex items-center gap-3 p-2 rounded-full hover:bg-gray-100 transition-colors"
                 >
-                  <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-semibold">
-                    {profile?.full_name?.slice(0, 1).toUpperCase()}
-                  </div>
+                  {profile?.profile_photo_url ? (
+                    <img
+                      src={buildAssetUrl(profile.profile_photo_url)}
+                      alt={profile.full_name}
+                      className="w-10 h-10 rounded-full object-cover border border-gray-200"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-semibold">
+                      {profile?.full_name?.slice(0, 1).toUpperCase()}
+                    </div>
+                  )}
                   <div className="hidden sm:block text-left">
                     <p className="text-sm font-semibold text-gray-900">{profile?.full_name}</p>
                     <p className="text-xs text-gray-500 capitalize">{profile?.role}</p>

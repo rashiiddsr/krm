@@ -18,6 +18,7 @@ export interface Database {
           no_hp: string
           password_hash: string
           role: 'admin' | 'sales'
+          profile_photo_url: string | null
           created_at: string
           updated_at: string
         }
@@ -29,6 +30,7 @@ export interface Database {
           no_hp: string
           password_hash: string
           role: 'admin' | 'sales'
+          profile_photo_url?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -40,6 +42,7 @@ export interface Database {
           no_hp?: string
           password_hash?: string
           role?: 'admin' | 'sales'
+          profile_photo_url?: string | null
           created_at?: string
           updated_at?: string
         }

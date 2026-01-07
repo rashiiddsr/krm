@@ -1,7 +1,11 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import express from 'express';
 import cors from 'cors';
+import multer from 'multer';
 import bcrypt from 'bcryptjs';
 import { pool, withTransaction } from './db.js';
 
@@ -16,6 +20,31 @@ app.use(
   })
 );
 app.use(express.json());
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const uploadsDir = path.resolve(__dirname, '../uploads');
+await fs.mkdir(uploadsDir, { recursive: true });
+
+app.use('/uploads', express.static(uploadsDir));
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: uploadsDir,
+    filename: (req, file, cb) => {
+      const extension = path.extname(file.originalname);
+      cb(null, `${crypto.randomUUID()}${extension}`);
+    },
+  }),
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype.startsWith('image/')) {
+      cb(new Error('File harus berupa gambar.'));
+      return;
+    }
+    cb(null, true);
+  },
+});
 
 const buildWhereClause = (filters) => {
   const clauses = [];
@@ -41,23 +70,24 @@ app.get('/health', (req, res) => {
 
 app.post('/auth/login', async (req, res, next) => {
   try {
-    const { email, password } = req.body || {};
-    if (!email || !password) {
-      res.status(400).json({ message: 'Email dan password wajib diisi.' });
+    const { email, identifier, password } = req.body || {};
+    const loginId = identifier || email;
+    if (!loginId || !password) {
+      res.status(400).json({ message: 'Email/username dan password wajib diisi.' });
       return;
     }
 
     const [rows] = await pool.query(
-      `SELECT id, email, password_hash, full_name, username, no_hp, role, created_at, updated_at
+      `SELECT id, email, password_hash, full_name, username, no_hp, role, profile_photo_url, created_at, updated_at
        FROM users
-       WHERE email = ?
+       WHERE email = ? OR username = ?
        LIMIT 1`,
-      [email]
+      [loginId, loginId]
     );
 
     const user = rows[0];
     if (!user) {
-      res.status(401).json({ message: 'Email atau password salah.' });
+      res.status(401).json({ message: 'Email/username atau password salah.' });
       return;
     }
 
@@ -73,7 +103,7 @@ app.post('/auth/login', async (req, res, next) => {
       ]);
     }
     if (!passwordMatch) {
-      res.status(401).json({ message: 'Email atau password salah.' });
+      res.status(401).json({ message: 'Email/username atau password salah.' });
       return;
     }
 
@@ -86,6 +116,7 @@ app.post('/auth/login', async (req, res, next) => {
         username: user.username,
         no_hp: user.no_hp,
         role: user.role,
+        profile_photo_url: user.profile_photo_url,
         created_at: user.created_at,
         updated_at: user.updated_at,
       },
@@ -104,7 +135,7 @@ app.get('/profiles', async (req, res, next) => {
     const { role } = req.query;
     const { where, values } = buildWhereClause([{ clause: 'role = ?', value: role }]);
     const [rows] = await pool.query(
-      `SELECT id, email, full_name, username, no_hp, role, created_at, updated_at FROM users ${where}`,
+      `SELECT id, email, full_name, username, no_hp, role, profile_photo_url, created_at, updated_at FROM users ${where}`,
       values
     );
     res.json(rows);
@@ -116,7 +147,7 @@ app.get('/profiles', async (req, res, next) => {
 app.get('/profiles/:id', async (req, res, next) => {
   try {
     const [rows] = await pool.query(
-      'SELECT id, email, full_name, username, no_hp, role, created_at, updated_at FROM users WHERE id = ? LIMIT 1',
+      'SELECT id, email, full_name, username, no_hp, role, profile_photo_url, created_at, updated_at FROM users WHERE id = ? LIMIT 1',
       [req.params.id]
     );
     if (!rows[0]) {
@@ -148,7 +179,7 @@ app.post('/profiles', async (req, res, next) => {
       );
 
       const [rows] = await connection.query(
-        'SELECT id, email, full_name, username, no_hp, role, created_at, updated_at FROM users WHERE id = ? LIMIT 1',
+        'SELECT id, email, full_name, username, no_hp, role, profile_photo_url, created_at, updated_at FROM users WHERE id = ? LIMIT 1',
         [userId]
       );
 
@@ -208,7 +239,31 @@ app.put('/profiles/:id', async (req, res, next) => {
     });
 
     const [rows] = await pool.query(
-      'SELECT id, email, full_name, username, no_hp, role, created_at, updated_at FROM users WHERE id = ? LIMIT 1',
+      'SELECT id, email, full_name, username, no_hp, role, profile_photo_url, created_at, updated_at FROM users WHERE id = ? LIMIT 1',
+      [req.params.id]
+    );
+
+    res.json(rows[0]);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/profiles/:id/photo', upload.single('photo'), async (req, res, next) => {
+  try {
+    if (!req.file) {
+      res.status(400).json({ message: 'Foto profil wajib diunggah.' });
+      return;
+    }
+
+    const photoUrl = `/uploads/${req.file.filename}`;
+    await pool.query('UPDATE users SET profile_photo_url = ? WHERE id = ?', [
+      photoUrl,
+      req.params.id,
+    ]);
+
+    const [rows] = await pool.query(
+      'SELECT id, email, full_name, username, no_hp, role, profile_photo_url, created_at, updated_at FROM users WHERE id = ? LIMIT 1',
       [req.params.id]
     );
 
@@ -509,6 +564,14 @@ app.post('/notifications/read-all', async (req, res, next) => {
 });
 
 app.use((error, req, res, next) => {
+  if (error?.code === 'LIMIT_FILE_SIZE') {
+    res.status(413).json({ message: 'Ukuran foto profil maksimal 8MB.' });
+    return;
+  }
+  if (error?.message === 'File harus berupa gambar.') {
+    res.status(400).json({ message: error.message });
+    return;
+  }
   console.error(error);
   res.status(500).json({ message: error.message || 'Terjadi kesalahan pada server.' });
 });

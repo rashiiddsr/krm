@@ -52,9 +52,30 @@ const apiRequest = async <T>(path: string, options: RequestOptions = {}): Promis
   return data as T;
 };
 
+const apiRequestForm = async <T>(path: string, options: RequestInit = {}): Promise<T> => {
+  const response = await fetch(`${apiBaseUrl}${path}`, options);
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : null;
+
+  if (!response.ok) {
+    const message = data?.message || `Request failed with status ${response.status}`;
+    throw new Error(message);
+  }
+
+  return data as T;
+};
+
+export const buildAssetUrl = (path: string) => {
+  if (!path) return path;
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    return path;
+  }
+  return `${apiBaseUrl}${path}`;
+};
+
 export const api = {
-  login: (email: string, password: string) =>
-    apiRequest<AuthSession>('/auth/login', { method: 'POST', body: { email, password } }),
+  login: (identifier: string, password: string) =>
+    apiRequest<AuthSession>('/auth/login', { method: 'POST', body: { identifier, password } }),
   logout: () => apiRequest<void>('/auth/logout', { method: 'POST' }),
 
   listProfiles: (role?: string) =>
@@ -71,6 +92,14 @@ export const api = {
     apiRequest<Profile>('/profiles', { method: 'POST', body: payload }),
   updateProfile: (id: string, payload: Partial<Profile> & { password?: string }) =>
     apiRequest<Profile>(`/profiles/${id}`, { method: 'PUT', body: payload }),
+  uploadProfilePhoto: (id: string, file: File) => {
+    const formData = new FormData();
+    formData.append('photo', file);
+    return apiRequestForm<Profile>(`/profiles/${id}/photo`, {
+      method: 'POST',
+      body: formData,
+    });
+  },
   deleteProfile: (id: string) => apiRequest<void>(`/profiles/${id}`, { method: 'DELETE' }),
 
   listProspects: (params: { salesId?: string; startDate?: string; endDate?: string } = {}) =>

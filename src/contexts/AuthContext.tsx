@@ -6,7 +6,7 @@ interface AuthContextType {
   user: AuthUser | null;
   profile: Profile | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (identifier: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   updateProfileState: (profile: Profile) => void;
 }
@@ -47,8 +47,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const signIn = async (email: string, password: string) => {
-    const session = await api.login(email, password);
+  const signIn = async (identifier: string, password: string) => {
+    const session = await api.login(identifier, password);
     applySession(session);
   };
 
