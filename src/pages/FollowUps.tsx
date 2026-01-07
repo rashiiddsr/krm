@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
 import type { FollowUp, Prospect, Profile } from '../lib/database.types';
-import { Calendar, CheckCircle, Clock, Search, User, Phone, FileText, X } from 'lucide-react';
+import { Calendar, CheckCircle, Clock, Search, X, Eye } from 'lucide-react';
 
 interface FollowUpWithDetails extends FollowUp {
   prospect?: Prospect;
@@ -16,9 +16,13 @@ export default function FollowUps() {
   const [filteredFollowUps, setFilteredFollowUps] = useState<FollowUpWithDetails[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterStartDate, setFilterStartDate] = useState('');
+  const [filterEndDate, setFilterEndDate] = useState('');
   const [loading, setLoading] = useState(true);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedFollowUp, setSelectedFollowUp] = useState<FollowUpWithDetails | null>(null);
+  const [detailFollowUp, setDetailFollowUp] = useState<FollowUpWithDetails | null>(null);
   const [updateData, setUpdateData] = useState({
     status: '',
     notes: '',
@@ -44,8 +48,12 @@ export default function FollowUps() {
       filtered = filtered.filter((f) => f.status === filterStatus);
     }
 
+    if (filterStartDate || filterEndDate) {
+      filtered = filtered.filter((f) => isWithinDateRange(f.scheduled_date));
+    }
+
     setFilteredFollowUps(filtered);
-  }, [searchTerm, filterStatus, followUps]);
+  }, [searchTerm, filterStatus, filterStartDate, filterEndDate, followUps]);
 
   const loadFollowUps = async () => {
     if (!profile) return;
@@ -72,6 +80,11 @@ export default function FollowUps() {
       scheduled_date: followUp.scheduled_date,
     });
     setShowUpdateModal(true);
+  };
+
+  const openDetailModal = (followUp: FollowUpWithDetails) => {
+    setDetailFollowUp(followUp);
+    setShowDetailModal(true);
   };
 
   const handleUpdate = async (e: React.FormEvent) => {
@@ -131,8 +144,22 @@ export default function FollowUps() {
     );
   };
 
-  const isOverdue = (scheduledDate: string) => {
-    return new Date(scheduledDate) < new Date() && selectedFollowUp?.status !== 'completed';
+  const isOverdue = (scheduledDate: string, status: string) => {
+    return new Date(scheduledDate) < new Date() && status !== 'completed';
+  };
+
+  const isWithinDateRange = (dateValue: string) => {
+    if (!filterStartDate && !filterEndDate) return true;
+    const date = new Date(dateValue);
+    if (filterStartDate) {
+      const start = new Date(`${filterStartDate}T00:00:00`);
+      if (date < start) return false;
+    }
+    if (filterEndDate) {
+      const end = new Date(`${filterEndDate}T23:59:59`);
+      if (date > end) return false;
+    }
+    return true;
   };
 
   if (loading) {
@@ -159,6 +186,20 @@ export default function FollowUps() {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+          />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <input
+            type="date"
+            value={filterStartDate}
+            onChange={(e) => setFilterStartDate(e.target.value)}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+          />
+          <input
+            type="date"
+            value={filterEndDate}
+            onChange={(e) => setFilterEndDate(e.target.value)}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
           />
         </div>
 
@@ -206,88 +247,97 @@ export default function FollowUps() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4">
-        {filteredFollowUps.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
-            <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-            <p className="text-gray-600">Belum ada follow-up</p>
-          </div>
-        ) : (
-          filteredFollowUps.map((followUp) => {
-            const overdue = isOverdue(followUp.scheduled_date);
-            return (
-              <div
-                key={followUp.id}
-                className={`bg-white rounded-xl shadow-sm border p-6 hover:shadow-md transition-shadow ${
-                  overdue ? 'border-red-300 bg-red-50/30' : 'border-gray-200'
-                }`}
-              >
-                <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-                  <div className="flex-1 space-y-3">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900">
-                          {followUp.prospect?.nama}
-                        </h3>
-                        {profile?.role === 'admin' && (
-                          <p className="text-sm text-gray-500 mt-1">
-                            Sales: {followUp.assignedToProfile?.full_name}
-                          </p>
-                        )}
-                      </div>
-                      {getStatusBadge(followUp.status)}
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div className="flex items-center gap-2 text-gray-600">
-                        <Phone className="w-4 h-4 flex-shrink-0" />
-                        <span className="text-sm">{followUp.prospect?.no_hp}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-gray-600">
-                        <Calendar className="w-4 h-4 flex-shrink-0" />
-                        <span className={`text-sm ${overdue ? 'text-red-600 font-medium' : ''}`}>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Prospek
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  No HP
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Jadwal
+                </th>
+                {profile?.role === 'admin' && (
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Sales
+                  </th>
+                )}
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Aksi
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 bg-white">
+              {filteredFollowUps.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={profile?.role === 'admin' ? 6 : 5}
+                    className="px-6 py-10 text-center"
+                  >
+                    <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                    <p className="text-gray-600">Belum ada follow-up</p>
+                  </td>
+                </tr>
+              ) : (
+                filteredFollowUps.map((followUp) => {
+                  const overdue = isOverdue(followUp.scheduled_date, followUp.status);
+                  return (
+                    <tr
+                      key={followUp.id}
+                      className={`hover:bg-gray-50 ${overdue ? 'bg-red-50/40' : ''}`}
+                    >
+                      <td className="px-4 py-4 text-sm font-semibold text-gray-900">
+                        {followUp.prospect?.nama}
+                      </td>
+                      <td className="px-4 py-4 text-sm">{getStatusBadge(followUp.status)}</td>
+                      <td className="px-4 py-4 text-sm text-gray-600">
+                        {followUp.prospect?.no_hp}
+                      </td>
+                      <td className="px-4 py-4 text-sm text-gray-600">
+                        <span className={overdue ? 'text-red-600 font-medium' : ''}>
                           {new Date(followUp.scheduled_date).toLocaleString('id-ID')}
                           {overdue && ' (Terlambat)'}
                         </span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-start gap-2 text-gray-600">
-                      <User className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                      <span className="text-sm">Kebutuhan: {followUp.prospect?.kebutuhan}</span>
-                    </div>
-
-                    {followUp.notes && (
-                      <div className="flex items-start gap-2 text-gray-600">
-                        <FileText className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                        <span className="text-sm">Catatan: {followUp.notes}</span>
-                      </div>
-                    )}
-
-                    {followUp.completed_at && (
-                      <div className="flex items-center gap-2 text-green-600">
-                        <CheckCircle className="w-4 h-4" />
-                        <span className="text-sm">
-                          Diselesaikan: {new Date(followUp.completed_at).toLocaleString('id-ID')}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  {profile?.role === 'sales' && followUp.status !== 'completed' && (
-                    <button
-                      onClick={() => openUpdateModal(followUp)}
-                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                      <Clock className="w-4 h-4" />
-                      Update Status
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })
-        )}
+                      </td>
+                      {profile?.role === 'admin' && (
+                        <td className="px-4 py-4 text-sm text-gray-600">
+                          {followUp.assignedToProfile?.full_name || '-'}
+                        </td>
+                      )}
+                      <td className="px-4 py-4 text-right">
+                        <div className="inline-flex items-center gap-2">
+                          <button
+                            onClick={() => openDetailModal(followUp)}
+                            className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                          >
+                            <Eye className="w-4 h-4" />
+                            Detail
+                          </button>
+                          {profile?.role === 'sales' && followUp.status !== 'completed' && (
+                            <button
+                              onClick={() => openUpdateModal(followUp)}
+                              className="flex items-center gap-2 px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                            >
+                              <Clock className="w-4 h-4" />
+                              Update Status
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {showUpdateModal && selectedFollowUp && (
@@ -316,49 +366,51 @@ export default function FollowUps() {
                 </p>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
-                <select
-                  value={updateData.status}
-                  onChange={(e) => setUpdateData({ ...updateData, status: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                  required
-                >
-                  <option value="pending">Pending</option>
-                  <option value="in_progress">Dalam Progress</option>
-                  <option value="completed">Selesai</option>
-                  <option value="rescheduled">Jadwalkan Ulang</option>
-                </select>
-              </div>
-
-              {updateData.status === 'rescheduled' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Jadwal Baru
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={updateData.scheduled_date}
-                    onChange={(e) =>
-                      setUpdateData({ ...updateData, scheduled_date: e.target.value })
-                    }
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                  <select
+                    value={updateData.status}
+                    onChange={(e) => setUpdateData({ ...updateData, status: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                     required
+                  >
+                    <option value="pending">Pending</option>
+                    <option value="in_progress">Dalam Progress</option>
+                    <option value="completed">Selesai</option>
+                    <option value="rescheduled">Jadwalkan Ulang</option>
+                  </select>
+                </div>
+
+                {updateData.status === 'rescheduled' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Jadwal Baru
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={updateData.scheduled_date}
+                      onChange={(e) =>
+                        setUpdateData({ ...updateData, scheduled_date: e.target.value })
+                      }
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                      required
+                    />
+                  </div>
+                )}
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Catatan (Opsional)
+                  </label>
+                  <textarea
+                    value={updateData.notes}
+                    onChange={(e) => setUpdateData({ ...updateData, notes: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    rows={4}
+                    placeholder="Tambahkan catatan tentang follow-up ini..."
                   />
                 </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Catatan (Opsional)
-                </label>
-                <textarea
-                  value={updateData.notes}
-                  onChange={(e) => setUpdateData({ ...updateData, notes: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                  rows={4}
-                  placeholder="Tambahkan catatan tentang follow-up ini..."
-                />
               </div>
 
               <div className="flex gap-3 pt-4">
@@ -380,6 +432,83 @@ export default function FollowUps() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showDetailModal && detailFollowUp && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
+            <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-gray-900">Detail Follow-Up</h2>
+              <button
+                onClick={() => {
+                  setShowDetailModal(false);
+                  setDetailFollowUp(null);
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <p className="text-sm text-gray-500">Prospek</p>
+                <p className="text-base font-semibold text-gray-900">
+                  {detailFollowUp.prospect?.nama}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Status</p>
+                <div className="mt-1">{getStatusBadge(detailFollowUp.status)}</div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-gray-500">No HP</p>
+                  <p className="text-sm text-gray-900">{detailFollowUp.prospect?.no_hp}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Jadwal</p>
+                  <p className="text-sm text-gray-900">
+                    {new Date(detailFollowUp.scheduled_date).toLocaleString('id-ID')}
+                  </p>
+                </div>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Kebutuhan</p>
+                <p className="text-sm text-gray-900">{detailFollowUp.prospect?.kebutuhan}</p>
+              </div>
+              {detailFollowUp.notes && (
+                <div>
+                  <p className="text-sm text-gray-500">Catatan</p>
+                  <p className="text-sm text-gray-900">{detailFollowUp.notes}</p>
+                </div>
+              )}
+              {detailFollowUp.completed_at && (
+                <div className="flex items-center gap-2 text-green-600">
+                  <CheckCircle className="w-4 h-4" />
+                  <span className="text-sm">
+                    Diselesaikan: {new Date(detailFollowUp.completed_at).toLocaleString('id-ID')}
+                  </span>
+                </div>
+              )}
+              {profile?.role === 'admin' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-gray-500">Sales</p>
+                    <p className="text-sm text-gray-900">
+                      {detailFollowUp.assignedToProfile?.full_name || '-'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Ditugaskan Oleh</p>
+                    <p className="text-sm text-gray-900">
+                      {detailFollowUp.assignedByProfile?.full_name || '-'}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

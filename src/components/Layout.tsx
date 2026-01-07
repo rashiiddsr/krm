@@ -104,6 +104,13 @@ export default function Layout({ children, currentPage, onNavigate }: LayoutProp
     loadNotifications();
   };
 
+  const handleNavigate = (page: string) => {
+    onNavigate(page);
+    if (window.innerWidth < 1024) {
+      setSidebarOpen(false);
+    }
+  };
+
   const menuItems =
     profile?.role === 'admin'
       ? [
@@ -153,8 +160,7 @@ export default function Layout({ children, currentPage, onNavigate }: LayoutProp
               <button
                 key={item.id}
                 onClick={() => {
-                  onNavigate(item.id);
-                  setSidebarOpen(false);
+                  handleNavigate(item.id);
                 }}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
                   isActive
