@@ -2,16 +2,13 @@ import crypto from 'node:crypto';
 import dotenv from 'dotenv';
 import express from 'express';
 import cors from 'cors';
-import cookieParser from 'cookie-parser';
 import bcrypt from 'bcryptjs';
-import { ensureSchema, pool, withTransaction } from './db.js';
+import { pool, withTransaction } from './db.js';
 
 dotenv.config();
 
 const app = express();
 const port = Number(process.env.PORT || 3001);
-const sessionCookie = process.env.SESSION_COOKIE || 'krm_session';
-
 app.use(
   cors({
     origin: process.env.FRONTEND_ORIGIN || 'http://localhost:5173',
@@ -19,46 +16,6 @@ app.use(
   })
 );
 app.use(express.json());
-app.use(cookieParser());
-
-const sessions = new Map();
-
-const createSession = (userId) => {
-  const token = crypto.randomUUID();
-  sessions.set(token, { userId, createdAt: Date.now() });
-  return token;
-};
-
-const getSessionUserId = (req) => {
-  const token = req.cookies?.[sessionCookie];
-  if (!token) return null;
-  const session = sessions.get(token);
-  return session?.userId ?? null;
-};
-
-const setSessionCookie = (res, token) => {
-  res.cookie(sessionCookie, token, {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-  });
-};
-
-const clearSessionCookie = (res) => {
-  res.clearCookie(sessionCookie);
-};
-
-const fetchSessionProfile = async (userId) => {
-  const [rows] = await pool.query(
-    `SELECT u.id, u.email, p.full_name, p.role
-     FROM users u
-     JOIN profiles p ON p.id = u.id
-     WHERE u.id = ?
-     LIMIT 1`,
-    [userId]
-  );
-  return rows[0] || null;
-};
 
 const ensureDefaultAdmin = async () => {
   const adminEmail = 'admin@krm.com';
@@ -77,8 +34,8 @@ const ensureDefaultAdmin = async () => {
       [userId, adminEmail, passwordHash]
     );
     await connection.query(
-      'INSERT INTO profiles (id, email, full_name, role) VALUES (?, ?, ?, ?)',
-      [userId, adminEmail, 'Administrator', 'admin']
+      'INSERT INTO profiles (id, email, full_name, username, no_hp, role) VALUES (?, ?, ?, ?, ?, ?)',
+      [userId, adminEmail, 'Administrator', 'admin', '0000000000', 'admin']
     );
   });
 };
@@ -105,30 +62,6 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-app.get('/auth/session', async (req, res) => {
-  const userId = getSessionUserId(req);
-  if (!userId) {
-    res.json(null);
-    return;
-  }
-
-  const profile = await fetchSessionProfile(userId);
-  if (!profile) {
-    res.json(null);
-    return;
-  }
-
-  res.json({
-    user: { id: profile.id, email: profile.email },
-    profile: {
-      id: profile.id,
-      email: profile.email,
-      full_name: profile.full_name,
-      role: profile.role,
-    },
-  });
-});
-
 app.post('/auth/initialize-admin', async (req, res, next) => {
   try {
     await ensureDefaultAdmin();
@@ -147,7 +80,7 @@ app.post('/auth/login', async (req, res, next) => {
     }
 
     const [rows] = await pool.query(
-      `SELECT u.id, u.email, u.password_hash, p.full_name, p.role
+      `SELECT u.id, u.email, u.password_hash, p.full_name, p.username, p.no_hp, p.role
        FROM users u
        JOIN profiles p ON p.id = u.id
        WHERE u.email = ?
@@ -167,15 +100,14 @@ app.post('/auth/login', async (req, res, next) => {
       return;
     }
 
-    const token = createSession(user.id);
-    setSessionCookie(res, token);
-
     res.json({
       user: { id: user.id, email: user.email },
       profile: {
         id: user.id,
         email: user.email,
         full_name: user.full_name,
+        username: user.username,
+        no_hp: user.no_hp,
         role: user.role,
       },
     });
@@ -185,11 +117,6 @@ app.post('/auth/login', async (req, res, next) => {
 });
 
 app.post('/auth/logout', (req, res) => {
-  const token = req.cookies?.[sessionCookie];
-  if (token) {
-    sessions.delete(token);
-  }
-  clearSessionCookie(res);
   res.status(204).end();
 });
 
@@ -197,7 +124,10 @@ app.get('/profiles', async (req, res, next) => {
   try {
     const { role } = req.query;
     const { where, values } = buildWhereClause([{ clause: 'role = ?', value: role }]);
-    const [rows] = await pool.query(`SELECT id, email, full_name, role FROM profiles ${where}`, values);
+    const [rows] = await pool.query(
+      `SELECT id, email, full_name, username, no_hp, role FROM profiles ${where}`,
+      values
+    );
     res.json(rows);
   } catch (error) {
     next(error);
@@ -207,7 +137,7 @@ app.get('/profiles', async (req, res, next) => {
 app.get('/profiles/:id', async (req, res, next) => {
   try {
     const [rows] = await pool.query(
-      'SELECT id, email, full_name, role FROM profiles WHERE id = ? LIMIT 1',
+      'SELECT id, email, full_name, username, no_hp, role FROM profiles WHERE id = ? LIMIT 1',
       [req.params.id]
     );
     if (!rows[0]) {
@@ -222,8 +152,8 @@ app.get('/profiles/:id', async (req, res, next) => {
 
 app.post('/profiles', async (req, res, next) => {
   try {
-    const { full_name, email, password, role } = req.body || {};
-    if (!full_name || !email || !password || !role) {
+    const { full_name, email, username, no_hp, password, role } = req.body || {};
+    if (!full_name || !email || !username || !no_hp || !password || !role) {
       res.status(400).json({ message: 'Data user belum lengkap.' });
       return;
     }
@@ -237,11 +167,11 @@ app.post('/profiles', async (req, res, next) => {
         [userId, email, passwordHash]
       );
       await connection.query(
-        'INSERT INTO profiles (id, email, full_name, role) VALUES (?, ?, ?, ?)',
-        [userId, email, full_name, role]
+        'INSERT INTO profiles (id, email, full_name, username, no_hp, role) VALUES (?, ?, ?, ?, ?, ?)',
+        [userId, email, full_name, username, no_hp, role]
       );
 
-      return { id: userId, email, full_name, role };
+      return { id: userId, email, full_name, username, no_hp, role };
     });
 
     res.status(201).json(newProfile);
@@ -252,7 +182,7 @@ app.post('/profiles', async (req, res, next) => {
 
 app.put('/profiles/:id', async (req, res, next) => {
   try {
-    const { full_name, email, role } = req.body || {};
+    const { full_name, email, username, no_hp, role, password } = req.body || {};
     const updates = [];
     const values = [];
 
@@ -264,12 +194,20 @@ app.put('/profiles/:id', async (req, res, next) => {
       updates.push('email = ?');
       values.push(email);
     }
+    if (username) {
+      updates.push('username = ?');
+      values.push(username);
+    }
+    if (no_hp) {
+      updates.push('no_hp = ?');
+      values.push(no_hp);
+    }
     if (role) {
       updates.push('role = ?');
       values.push(role);
     }
 
-    if (!updates.length) {
+    if (!updates.length && !password) {
       res.status(400).json({ message: 'Tidak ada data untuk diperbarui.' });
       return;
     }
@@ -278,14 +216,23 @@ app.put('/profiles/:id', async (req, res, next) => {
       if (email) {
         await connection.query('UPDATE users SET email = ? WHERE id = ?', [email, req.params.id]);
       }
-      await connection.query(`UPDATE profiles SET ${updates.join(', ')} WHERE id = ?`, [
-        ...values,
-        req.params.id,
-      ]);
+      if (password) {
+        const passwordHash = await bcrypt.hash(password, 10);
+        await connection.query('UPDATE users SET password_hash = ? WHERE id = ?', [
+          passwordHash,
+          req.params.id,
+        ]);
+      }
+      if (updates.length) {
+        await connection.query(`UPDATE profiles SET ${updates.join(', ')} WHERE id = ?`, [
+          ...values,
+          req.params.id,
+        ]);
+      }
     });
 
     const [rows] = await pool.query(
-      'SELECT id, email, full_name, role FROM profiles WHERE id = ? LIMIT 1',
+      'SELECT id, email, full_name, username, no_hp, role FROM profiles WHERE id = ? LIMIT 1',
       [req.params.id]
     );
 
@@ -324,7 +271,8 @@ app.get('/prospects/with-sales', async (req, res, next) => {
     const { salesId } = req.query;
     const { where, values } = buildWhereClause([{ clause: 'p.sales_id = ?', value: salesId }]);
     const [rows] = await pool.query(
-      `SELECT p.*, pr.id AS sales_profile_id, pr.full_name AS sales_name, pr.email AS sales_email
+      `SELECT p.*, pr.id AS sales_profile_id, pr.full_name AS sales_name, pr.email AS sales_email,
+              pr.username AS sales_username, pr.no_hp AS sales_no_hp
        FROM prospects p
        JOIN profiles pr ON pr.id = p.sales_id
        ${where}`,
@@ -336,6 +284,8 @@ app.get('/prospects/with-sales', async (req, res, next) => {
         id: row.sales_profile_id,
         full_name: row.sales_name,
         email: row.sales_email,
+        username: row.sales_username,
+        no_hp: row.sales_no_hp,
         role: 'sales',
       },
     }));
@@ -410,7 +360,9 @@ app.get('/follow-ups', async (req, res, next) => {
       `SELECT f.*, p.nama AS prospect_nama, p.no_hp AS prospect_no_hp, p.alamat AS prospect_alamat,
               p.kebutuhan AS prospect_kebutuhan, p.status AS prospect_status, p.sales_id AS prospect_sales_id,
               assigned_by.full_name AS assigned_by_name, assigned_by.email AS assigned_by_email,
-              assigned_to.full_name AS assigned_to_name, assigned_to.email AS assigned_to_email
+              assigned_by.username AS assigned_by_username, assigned_by.no_hp AS assigned_by_no_hp,
+              assigned_to.full_name AS assigned_to_name, assigned_to.email AS assigned_to_email,
+              assigned_to.username AS assigned_to_username, assigned_to.no_hp AS assigned_to_no_hp
        FROM follow_ups f
        JOIN prospects p ON p.id = f.prospect_id
        JOIN profiles assigned_by ON assigned_by.id = f.assigned_by
@@ -434,12 +386,16 @@ app.get('/follow-ups', async (req, res, next) => {
         id: row.assigned_by,
         full_name: row.assigned_by_name,
         email: row.assigned_by_email,
+        username: row.assigned_by_username,
+        no_hp: row.assigned_by_no_hp,
         role: 'admin',
       },
       assignedToProfile: {
         id: row.assigned_to,
         full_name: row.assigned_to_name,
         email: row.assigned_to_email,
+        username: row.assigned_to_username,
+        no_hp: row.assigned_to_no_hp,
         role: 'sales',
       },
     }));
@@ -580,14 +536,6 @@ app.use((error, req, res, next) => {
   res.status(500).json({ message: error.message || 'Terjadi kesalahan pada server.' });
 });
 
-ensureSchema()
-  .then(async () => {
-    await ensureDefaultAdmin();
-    app.listen(port, () => {
-      console.log(`API server running on http://localhost:${port}`);
-    });
-  })
-  .catch((error) => {
-    console.error('Failed to start server:', error);
-    process.exit(1);
-  });
+app.listen(port, () => {
+  console.log(`API server running on http://localhost:${port}`);
+});
