@@ -7,7 +7,7 @@ const REMEMBER_EMAIL_KEY = 'krm.remember.email';
 const REMEMBER_PASSWORD_KEY = 'krm.remember.password';
 
 export default function Login() {
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
@@ -18,7 +18,7 @@ export default function Login() {
     const remembered = localStorage.getItem(REMEMBER_KEY) === 'true';
     if (remembered) {
       setRememberMe(true);
-      setEmail(localStorage.getItem(REMEMBER_EMAIL_KEY) || '');
+      setIdentifier(localStorage.getItem(REMEMBER_EMAIL_KEY) || '');
       setPassword(localStorage.getItem(REMEMBER_PASSWORD_KEY) || '');
     }
   }, []);
@@ -29,10 +29,10 @@ export default function Login() {
     setLoading(true);
 
     try {
-      await signIn(email, password);
+      await signIn(identifier, password);
       if (rememberMe) {
         localStorage.setItem(REMEMBER_KEY, 'true');
-        localStorage.setItem(REMEMBER_EMAIL_KEY, email);
+        localStorage.setItem(REMEMBER_EMAIL_KEY, identifier);
         localStorage.setItem(REMEMBER_PASSWORD_KEY, password);
       } else {
         localStorage.removeItem(REMEMBER_KEY);
@@ -40,7 +40,7 @@ export default function Login() {
         localStorage.removeItem(REMEMBER_PASSWORD_KEY);
       }
     } catch (err: any) {
-      setError(err.message || 'Login gagal. Periksa kembali email dan password Anda.');
+      setError(err.message || 'Login gagal. Periksa kembali email/username dan password Anda.');
     } finally {
       setLoading(false);
     }
@@ -70,16 +70,16 @@ export default function Login() {
             )}
 
             <div className="space-y-2">
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                Email
+              <label htmlFor="identifier" className="block text-sm font-medium text-gray-700">
+                Email / Username
               </label>
               <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                id="identifier"
+                type="text"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
                 className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none"
-                placeholder="Masukkan email"
+                placeholder="Masukkan email atau username"
                 required
               />
             </div>

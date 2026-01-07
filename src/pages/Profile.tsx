@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Camera, Save } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { api } from '../lib/api';
+import { api, buildAssetUrl } from '../lib/api';
 
 export default function Profile() {
   const { profile, updateProfileState } = useAuth();
@@ -13,7 +13,9 @@ export default function Profile() {
     password: '',
   });
   const [saving, setSaving] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [message, setMessage] = useState('');
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!profile) return;
@@ -53,19 +55,60 @@ export default function Profile() {
     }
   };
 
+  const handlePhotoChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !profile) return;
+    setUploadingPhoto(true);
+    setMessage('');
+
+    try {
+      const updated = await api.uploadProfilePhoto(profile.id, file);
+      updateProfileState(updated);
+      setMessage('Foto profil berhasil diperbarui.');
+    } catch (error: any) {
+      setMessage(error.message || 'Gagal mengunggah foto profil.');
+    } finally {
+      setUploadingPhoto(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const profilePhotoUrl = profile.profile_photo_url
+    ? buildAssetUrl(profile.profile_photo_url)
+    : null;
+
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 flex items-center gap-6">
         <div className="relative">
-          <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center text-xl font-semibold text-gray-700">
-            {profile.full_name.slice(0, 2).toUpperCase()}
-          </div>
+          {profilePhotoUrl ? (
+            <img
+              src={profilePhotoUrl}
+              alt={profile.full_name}
+              className="w-16 h-16 rounded-full object-cover border border-gray-200"
+            />
+          ) : (
+            <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center text-xl font-semibold text-gray-700">
+              {profile.full_name.slice(0, 2).toUpperCase()}
+            </div>
+          )}
           <button
             type="button"
-            className="absolute -bottom-1 -right-1 bg-blue-600 text-white rounded-full p-2 shadow-md"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploadingPhoto}
+            className="absolute -bottom-1 -right-1 bg-blue-600 text-white rounded-full p-2 shadow-md disabled:opacity-70"
           >
             <Camera className="w-4 h-4" />
           </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handlePhotoChange}
+            className="hidden"
+          />
         </div>
         <div>
           <p className="text-sm text-gray-500">Profil</p>
