@@ -1,8 +1,8 @@
 import crypto from 'node:crypto';
-import fs from 'node:fs/promises';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import dotenv from 'dotenv';
+import './env.js';
 import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
@@ -15,7 +15,6 @@ import {
   buildFollowUpCompletedEmail,
 } from './mailer.js';
 
-dotenv.config();
 
 const app = express();
 const port = Number(process.env.PORT || 3001);
@@ -30,7 +29,7 @@ app.use(express.json());
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const uploadsDir = path.resolve(__dirname, '../uploads');
-await fs.mkdir(uploadsDir, { recursive: true });
+fs.mkdirSync(uploadsDir, { recursive: true });
 
 app.use('/uploads', express.static(uploadsDir));
 
